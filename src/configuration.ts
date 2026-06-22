@@ -6,7 +6,10 @@ import {
   Inject,
   ILogger,
   MidwayWebRouterService,
+  ApplicationContext,
+  IMidwayContainer,
 } from '@midwayjs/core';
+import { TemplateCategoryInit } from './modules/template/service/category-init';
 import * as koa from '@midwayjs/koa';
 // import * as crossDomain from '@midwayjs/cross-domain';
 import * as validate from '@midwayjs/validate';
@@ -66,5 +69,16 @@ export class MainConfiguration {
   @Inject()
   logger: ILogger;
 
-  async onReady() {}
+  @ApplicationContext()
+  applicationContext: IMidwayContainer;
+
+  async onReady() {
+    // 补种模板分类默认数据（若表为空）
+    try {
+      const categoryInit = await this.applicationContext.getAsync(TemplateCategoryInit);
+      await categoryInit.seed();
+    } catch (e) {
+      this.logger.warn('[template] category seed failed:', e.message);
+    }
+  }
 }

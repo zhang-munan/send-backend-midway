@@ -27,6 +27,17 @@ export default {
         entities: ['**/modules/*/entity'],
         // 订阅者
         subscribers: [TenantSubscriber],
+        // 连接池配置：防止空闲连接被服务器/防火墙静默断开后复用导致 ETIMEDOUT
+        extra: {
+          // 连接池大小
+          connectionLimit: 10,
+          waitForConnections: true,
+          // 连接超时（ms）
+          connectTimeout: 20000,
+          // 开启 TCP KeepAlive，让 OS 定期发探测包，及时发现并回收僵死连接
+          enableKeepAlive: true,
+          keepAliveInitialDelay: 0,
+        },
       },
     },
   },

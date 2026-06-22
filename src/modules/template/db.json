@@ -1,0 +1,29 @@
+{
+    "dict_type": [
+        {
+            "id": 21,
+            "name": "模板分类",
+            "key": "templateCategory"
+        }
+    ],
+    "dict_info": [
+        { "id": 31, "typeId": 21, "name": "道歉和解", "orderNum": 1, "remark": null, "parentId": null, "value": "apology" },
+        { "id": 32, "typeId": 21, "name": "真心表白", "orderNum": 2, "remark": null, "parentId": null, "value": "confession" },
+        { "id": 33, "typeId": 21, "name": "节日祝福", "orderNum": 3, "remark": null, "parentId": null, "value": "blessing" },
+        { "id": 34, "typeId": 21, "name": "感谢感恩", "orderNum": 4, "remark": null, "parentId": null, "value": "gratitude" },
+        { "id": 35, "typeId": 21, "name": "温暖关心", "orderNum": 5, "remark": null, "parentId": null, "value": "care" },
+        { "id": 36, "typeId": 21, "name": "事务通知", "orderNum": 6, "remark": null, "parentId": null, "value": "notice" },
+        { "id": 37, "typeId": 21, "name": "毕业告别", "orderNum": 7, "remark": null, "parentId": null, "value": "graduation" },
+        { "id": 38, "typeId": 21, "name": "通用",     "orderNum": 8, "remark": null, "parentId": null, "value": "general" }
+    ],
+    "template_category": [
+        { "id": 1, "name": "道歉和解", "value": "apology",    "description": "分手和解、真诚道歉等场景",   "sortOrder": 80, "isActive": 1 },
+        { "id": 2, "name": "真心表白", "value": "confession",  "description": "表白、告白等场景",           "sortOrder": 70, "isActive": 1 },
+        { "id": 3, "name": "节日祝福", "value": "blessing",    "description": "生日、新年、节日祝福等场景", "sortOrder": 60, "isActive": 1 },
+        { "id": 4, "name": "感谢感恩", "value": "gratitude",   "description": "感谢帮助、感恩陪伴等场景",   "sortOrder": 50, "isActive": 1 },
+        { "id": 5, "name": "温暖关心", "value": "care",        "description": "关心问候、日常关怀等场景",   "sortOrder": 40, "isActive": 1 },
+        { "id": 6, "name": "事务通知", "value": "notice",      "description": "通知、告知等场景",           "sortOrder": 30, "isActive": 1 },
+        { "id": 7, "name": "毕业告别", "value": "graduation",  "description": "毕业、离职、告别等场景",     "sortOrder": 20, "isActive": 1 },
+        { "id": 8, "name": "通用",     "value": "general",     "description": "其他通用场景",               "sortOrder": 10, "isActive": 1 }
+    ]
+}

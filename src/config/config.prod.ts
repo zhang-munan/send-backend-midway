@@ -28,6 +28,14 @@ export default {
         entities,
         // 订阅者
         subscribers: [TenantSubscriber],
+        // 防止空闲连接超时后复用导致 ETIMEDOUT
+        extra: {
+          connectionLimit: 10,
+          waitForConnections: true,
+          connectTimeout: 20000,
+          enableKeepAlive: true,
+          keepAliveInitialDelay: 0,
+        },
       },
     },
   },

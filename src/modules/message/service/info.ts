@@ -1,9 +1,11 @@
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Equal, LessThan, Like, Repository } from 'typeorm';
+import { Equal, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { MessageInfoEntity } from '../entity/info';
+import { MessageReplyEntity } from '../entity/reply';
+import { UserBalanceService } from '../../order/service/balance';
 
 /**
  * 消息信息
@@ -13,8 +15,14 @@ export class MessageInfoService extends BaseService {
   @InjectEntityModel(MessageInfoEntity)
   messageInfoEntity: Repository<MessageInfoEntity>;
 
+  @InjectEntityModel(MessageReplyEntity)
+  messageReplyEntity: Repository<MessageReplyEntity>;
+
+  @Inject()
+  userBalanceService: UserBalanceService;
+
   /**
-   * 发送消息
+   * 发送消息（需先有足够的消息配额）
    * @param userId 用户ID
    * @param params 消息参数
    */
@@ -44,6 +52,14 @@ export class MessageInfoService extends BaseService {
 
     // 计算计费条数（70字/条）
     const smsCount = Math.ceil(contentLength / 70);
+
+    // 检查用户消息配额（直接调用 sendMessage 时必须有足够配额）
+    const balance = await this.userBalanceService.getBalance(userId);
+    if (balance.messageQuota < smsCount) {
+      throw new CoolCommException(
+        `消息条数不足（剩余 ${balance.messageQuota} 条，本次需 ${smsCount} 条），请先购买套餐`
+      );
+    }
 
     // 计算脱敏号码
     const receiverPhoneMask =
@@ -79,6 +95,9 @@ export class MessageInfoService extends BaseService {
     messageInfo.clientIp = params.clientIp || null;
 
     await this.messageInfoEntity.save(messageInfo);
+
+    // 扣减用户消息配额
+    await this.userBalanceService.deductQuota(userId, smsCount, feeAmount);
 
     return messageInfo;
   }
@@ -144,7 +163,7 @@ export class MessageInfoService extends BaseService {
       where: {
         userId: Equal(userId),
         receiverPhoneHash: Equal(receiverPhoneHash),
-        createTime: LessThan(oneHourAgo) as any,
+        createTime: MoreThan(oneHourAgo) as any,
       },
     });
 
@@ -194,7 +213,11 @@ export class MessageInfoService extends BaseService {
     if (!message) {
       throw new CoolCommException('消息不存在');
     }
-    return message;
+    const reply = await this.messageReplyEntity.findOne({
+      where: { messageId: Equal(id) },
+      order: { receivedAt: 'ASC' },
+    });
+    return { ...message, reply: reply || null };
   }
 
   /**

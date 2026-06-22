@@ -1,6 +1,10 @@
 // 自动生成的文件，请勿手动修改
+import * as entityFeedback0 from './modules/feedback/entity/info';
 import * as entity0 from './modules/user/entity/wx';
 import * as entity1 from './modules/user/entity/info';
+import * as entityOrder0 from './modules/order/entity/product';
+import * as entityOrder1 from './modules/order/entity/info';
+import * as entityOrder2 from './modules/order/entity/balance';
 import * as entity2 from './modules/user/entity/address';
 import * as entity3 from './modules/template/entity/info';
 import * as entity4 from './modules/template/entity/collect';
@@ -27,9 +31,17 @@ import * as entity24 from './modules/base/entity/sys/menu';
 import * as entity25 from './modules/base/entity/sys/log';
 import * as entity26 from './modules/base/entity/sys/department';
 import * as entity27 from './modules/base/entity/sys/conf';
+import * as entitySetting0 from './modules/setting/entity/user_setting';
+import * as entitySetting1 from './modules/setting/entity/doc';
+import * as entitySetting2 from './modules/setting/entity/notify_template';
+import * as entitySetting3 from './modules/setting/entity/sms_config';
 export const entities = [
+  ...Object.values(entityFeedback0),
   ...Object.values(entity0),
   ...Object.values(entity1),
+  ...Object.values(entityOrder0),
+  ...Object.values(entityOrder1),
+  ...Object.values(entityOrder2),
   ...Object.values(entity2),
   ...Object.values(entity3),
   ...Object.values(entity4),
@@ -56,4 +68,8 @@ export const entities = [
   ...Object.values(entity25),
   ...Object.values(entity26),
   ...Object.values(entity27),
+  ...Object.values(entitySetting0),
+  ...Object.values(entitySetting1),
+  ...Object.values(entitySetting2),
+  ...Object.values(entitySetting3),
 ];

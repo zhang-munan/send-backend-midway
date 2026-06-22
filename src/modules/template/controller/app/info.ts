@@ -1,5 +1,5 @@
 import { CoolController, BaseController } from '@cool-midway/core';
-import { Body, Get, Inject, Post, Query } from '@midwayjs/core';
+import { Body, Get, Inject, Param, Post, Query } from '@midwayjs/core';
 import { TemplateInfoEntity } from '../../entity/info';
 import { TemplateInfoService } from '../../service/info';
 
@@ -22,18 +22,6 @@ export class AppTemplateInfoController extends BaseController {
     return this.ok(await this.templateInfoService.list(query));
   }
 
-  @Get('/:id', { summary: '模板详情' })
-  async detail(@Query('id') id: number) {
-    return this.ok(
-      await this.templateInfoService.detail(id, this.ctx.user?.id)
-    );
-  }
-
-  @Post('/:id/collect', { summary: '收藏/取消收藏' })
-  async collect(@Query('id') id: number) {
-    return this.ok(await this.templateInfoService.collect(this.ctx.user.id, id));
-  }
-
   @Get('/collected', { summary: '收藏列表' })
   async collectedList(
     @Query('page') page: number,
@@ -47,5 +35,17 @@ export class AppTemplateInfoController extends BaseController {
   @Post('/custom', { summary: '保存自定义模板' })
   async saveCustom(@Body() body) {
     return this.ok(await this.templateInfoService.saveCustom(this.ctx.user.id, body));
+  }
+
+  @Get('/:id', { summary: '模板详情' })
+  async detail(@Param('id') id: number) {
+    return this.ok(
+      await this.templateInfoService.detail(id, this.ctx.user?.id)
+    );
+  }
+
+  @Post('/:id/collect', { summary: '收藏/取消收藏' })
+  async collect(@Param('id') id: number) {
+    return this.ok(await this.templateInfoService.collect(this.ctx.user.id, id));
   }
 }
