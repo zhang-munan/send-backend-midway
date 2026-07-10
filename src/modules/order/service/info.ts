@@ -11,12 +11,14 @@ import { UserInfoEntity } from '../../user/entity/info';
 import { UserWxEntity } from '../../user/entity/wx';
 import { MessageInfoEntity } from '../../message/entity/info';
 import { UserWxService } from '../../user/service/wx';
+import { ConversationInfoService } from '../../conversation/service/info';
 
 /** 支付方式 */
 export const PAY_METHOD = {
   WECHAT: 1,
   ALIPAY: 2,
   BALANCE: 3,
+  MOCK: 4,
 };
 
 /** 订单状态 */
@@ -55,6 +57,9 @@ export class OrderInfoService extends BaseService {
 
   @Inject()
   userWxService: UserWxService;
+
+  @Inject()
+  conversationInfoService: ConversationInfoService;
 
   /**
    * 创建订单
@@ -174,16 +179,27 @@ export class OrderInfoService extends BaseService {
       throw new CoolCommException('订单状态不可支付');
     }
 
-    // 更新支付方式
-    await this.orderInfoEntity.update(order.id, { payMethod });
-
     if (payMethod === PAY_METHOD.WECHAT) {
+      await this.orderInfoEntity.update(order.id, { payMethod });
       return this.payByWechat(order, userId, ctx, params);
     } else if (payMethod === PAY_METHOD.BALANCE) {
+      await this.orderInfoEntity.update(order.id, { payMethod });
       return this.payByBalance(order, userId);
+    } else if (payMethod === PAY_METHOD.MOCK) {
+      if (!this.isDevMode()) {
+        throw new CoolCommException('模拟支付仅开发模式可用');
+      }
+      await this.orderInfoEntity.update(order.id, { payMethod });
+      return this.payByMock(order);
     } else {
       throw new CoolCommException('暂不支持该支付方式');
     }
+  }
+
+  private isDevMode() {
+    return [process.env.NODE_ENV, process.env.MIDWAY_SERVER_ENV].some(env =>
+      ['local', 'development'].includes(env || '')
+    );
   }
 
   /**
@@ -429,6 +445,21 @@ export class OrderInfoService extends BaseService {
   }
 
   /**
+   * 模拟支付（仅开发模式，同步完成）
+   */
+  private async payByMock(order: OrderInfoEntity) {
+    await this.orderInfoEntity.update(order.id, {
+      status: ORDER_STATUS.PAID,
+      payTime: new Date(),
+      tradeNo: `MOCK_${order.orderNo}`,
+    });
+
+    await this.createMessageAfterPaid(order);
+
+    return { orderId: order.id, orderNo: order.orderNo, paid: true };
+  }
+
+  /**
    * 微信支付异步通知回调
    * @param ctx Midway 请求上下文
    */
@@ -483,16 +514,12 @@ export class OrderInfoService extends BaseService {
    * 支付成功后处理：增加配额 + 创建消息记录
    */
   private async createMessageAfterPaid(order: OrderInfoEntity) {
-    const payParams = order.payParams || {};
+    const payParams = this.normalizePayParams(order.payParams);
     const messageQuota: number = payParams.messageQuota || 0;
 
     // 增加用户消息配额（购买套餐时 messageQuota > 0）
     if (messageQuota > 0) {
-      await this.userBalanceService.addQuota(
-        order.userId,
-        messageQuota,
-        Number(order.payAmount)
-      );
+      await this.userBalanceService.addQuota(order.userId, messageQuota);
     }
 
     // 如果有消息内容，创建消息记录（按次支付模式）
@@ -529,8 +556,58 @@ export class OrderInfoService extends BaseService {
         retryCount: 0,
         isFreeRetry: 0,
       });
-      await this.messageInfoEntity.save(message);
+      const savedMessage = await this.messageInfoEntity.save(message);
+      await this.createConversationTimeline(
+        savedMessage,
+        receiverPhoneHash,
+        receiverPhoneMask
+      );
     }
+  }
+
+  private normalizePayParams(payParams: any) {
+    if (!payParams) return {};
+    if (typeof payParams === 'string') {
+      try {
+        return JSON.parse(payParams);
+      } catch (e) {
+        return {};
+      }
+    }
+    return payParams;
+  }
+
+  private async createConversationTimeline(
+    message: MessageInfoEntity,
+    receiverPhoneHash: string,
+    receiverPhoneMask: string
+  ) {
+    const conversation = message.conversationId
+      ? { id: message.conversationId }
+      : await this.conversationInfoService.getOrCreate(
+          message.userId,
+          receiverPhoneHash,
+          receiverPhoneMask
+        );
+
+    if (!message.conversationId) {
+      message.conversationId = conversation.id;
+      await this.messageInfoEntity.update(message.id, {
+        conversationId: conversation.id,
+      });
+    }
+
+    await this.conversationInfoService.addTimelineItem(conversation.id, {
+      messageId: message.id,
+      direction: 1,
+      contentPreview: message.content.slice(0, 100),
+      feeAmount: message.feeAmount,
+    });
+    await this.conversationInfoService.updateLastMsg(
+      conversation.id,
+      message.content.slice(0, 100),
+      0
+    );
   }
 
   /**

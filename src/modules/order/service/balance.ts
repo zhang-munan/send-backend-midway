@@ -41,13 +41,12 @@ export class UserBalanceService extends BaseService {
   }
 
   /**
-   * 增加消息条数配额（支付成功后调用）
+   * 增加消息条数配额（购买套餐支付成功后调用）
    * 使用原子 SQL 增量更新，避免并发读写导致数据不一致
    * @param userId 用户ID
-   * @param quota 增加的条数（套餐购买传套餐条数，纯余额充值传 0）
-   * @param amount 付款金额（同步更新余额和累计充值）
+   * @param quota 增加的条数
    */
-  async addQuota(userId: number, quota: number, amount: number) {
+  async addQuota(userId: number, quota: number) {
     // 确保记录存在
     await this.getOrInit(userId);
     await this.userBalanceEntity
@@ -55,8 +54,26 @@ export class UserBalanceService extends BaseService {
       .update(UserBalanceEntity)
       .set({
         messageQuota: () => `messageQuota + ${quota}`,
-        balance: () => `ROUND(balance + ${Number(amount.toFixed(2))}, 2)`,
-        totalRecharge: () => `ROUND(totalRecharge + ${Number(amount.toFixed(2))}, 2)`,
+      })
+      .where('userId = :userId', { userId })
+      .execute();
+  }
+
+  /**
+   * 增加账户余额（独立余额充值通道调用）
+   * @param userId 用户ID
+   * @param amount 充值金额
+   */
+  async addBalance(userId: number, amount: number) {
+    const fee = Number(amount.toFixed(2));
+    if (fee <= 0) return;
+    await this.getOrInit(userId);
+    await this.userBalanceEntity
+      .createQueryBuilder()
+      .update(UserBalanceEntity)
+      .set({
+        balance: () => `ROUND(balance + ${fee}, 2)`,
+        totalRecharge: () => `ROUND(totalRecharge + ${fee}, 2)`,
       })
       .where('userId = :userId', { userId })
       .execute();

@@ -36,7 +36,7 @@ export class AppOrderInfoController extends BaseController {
   /**
    * 发起支付
    * @param orderId 订单ID
-   * @param payMethod 支付方式：1微信 2支付宝 3余额
+   * @param payMethod 支付方式：1微信 2支付宝 3余额 4模拟支付（开发模式）
    */
   @Post('/pay', { summary: '发起支付' })
   async pay(

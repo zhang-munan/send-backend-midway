@@ -33,6 +33,20 @@ export const transformerJson = {
     return value;
   },
 };
+
+/**
+ * Text JSON转换器
+ * text/varchar 字段不会像 json 字段一样自动序列化对象，写入前需要显式 stringify。
+ */
+export const transformerTextJson = {
+  to: value => {
+    if (value === null || value === undefined || typeof value === 'string') {
+      return value;
+    }
+    return JSON.stringify(value);
+  },
+  from: transformerJson.from,
+};
 /**
  * 实体基类
  */

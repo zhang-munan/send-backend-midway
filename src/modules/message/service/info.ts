@@ -6,6 +6,7 @@ import * as crypto from 'crypto';
 import { MessageInfoEntity } from '../entity/info';
 import { MessageReplyEntity } from '../entity/reply';
 import { UserBalanceService } from '../../order/service/balance';
+import { ConversationInfoService } from '../../conversation/service/info';
 
 /**
  * 消息信息
@@ -21,13 +22,25 @@ export class MessageInfoService extends BaseService {
   @Inject()
   userBalanceService: UserBalanceService;
 
+  @Inject()
+  conversationInfoService: ConversationInfoService;
+
   /**
    * 发送消息（需先有足够的消息配额）
    * @param userId 用户ID
    * @param params 消息参数
    */
   async sendMessage(userId: number, params: any) {
-    const { receiverPhone, content, templateId, conversationId, isAnonymous, senderSignature, sendType, scheduledAt } = params;
+    const {
+      receiverPhone,
+      content,
+      templateId,
+      conversationId,
+      isAnonymous,
+      senderSignature,
+      sendType,
+      scheduledAt,
+    } = params;
 
     // 验证手机号格式（11位数字）
     if (!receiverPhone || !/^1\d{10}$/.test(receiverPhone)) {
@@ -94,12 +107,54 @@ export class MessageInfoService extends BaseService {
     messageInfo.feeAmount = feeAmount;
     messageInfo.clientIp = params.clientIp || null;
 
-    await this.messageInfoEntity.save(messageInfo);
+    const savedMessage = await this.messageInfoEntity.save(messageInfo);
+
+    await this.createConversationTimeline(
+      savedMessage,
+      receiverPhoneHash,
+      receiverPhoneMask
+    );
 
     // 扣减用户消息配额
     await this.userBalanceService.deductQuota(userId, smsCount, feeAmount);
 
-    return messageInfo;
+    return savedMessage;
+  }
+
+  /**
+   * 创建/更新对话及发出消息时间线
+   */
+  private async createConversationTimeline(
+    message: MessageInfoEntity,
+    receiverPhoneHash: string,
+    receiverPhoneMask: string
+  ) {
+    const conversation = message.conversationId
+      ? { id: message.conversationId }
+      : await this.conversationInfoService.getOrCreate(
+          message.userId,
+          receiverPhoneHash,
+          receiverPhoneMask
+        );
+
+    if (!message.conversationId) {
+      message.conversationId = conversation.id;
+      await this.messageInfoEntity.update(message.id, {
+        conversationId: conversation.id,
+      });
+    }
+
+    await this.conversationInfoService.addTimelineItem(conversation.id, {
+      messageId: message.id,
+      direction: 1,
+      contentPreview: message.content.slice(0, 100),
+      feeAmount: message.feeAmount,
+    });
+    await this.conversationInfoService.updateLastMsg(
+      conversation.id,
+      message.content.slice(0, 100),
+      0
+    );
   }
 
   /**

@@ -1,4 +1,8 @@
-import { CoolController, BaseController, CoolCommException } from '@cool-midway/core';
+import {
+  CoolController,
+  BaseController,
+  CoolCommException,
+} from '@cool-midway/core';
 import { Body, Inject, Post } from '@midwayjs/core';
 import { UserBalanceEntity } from '../../entity/balance';
 import { UserInfoEntity } from '../../../user/entity/info';
@@ -40,14 +44,21 @@ export class AdminUserBalanceController extends BaseController {
   async adjustQuota(
     @Body('userId') userId: number,
     @Body('quota') quota: number,
-    @Body('amount') amount: number,
+    @Body('amount') amount: number
   ) {
     if (!userId) throw new CoolCommException('用户ID不能为空');
-    if (quota === undefined || quota === null) throw new CoolCommException('配额不能为空');
+    if (quota === undefined || quota === null) {
+      throw new CoolCommException('配额不能为空');
+    }
     if (quota >= 0) {
-      await this.userBalanceService.addQuota(userId, quota, amount || 0);
+      await this.userBalanceService.addQuota(userId, quota);
+      await this.userBalanceService.addBalance(userId, amount || 0);
     } else {
-      await this.userBalanceService.deductQuota(userId, Math.abs(quota), Math.abs(amount || 0));
+      await this.userBalanceService.deductQuota(
+        userId,
+        Math.abs(quota),
+        Math.abs(amount || 0)
+      );
     }
     return this.ok();
   }

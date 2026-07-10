@@ -1,4 +1,4 @@
-import { BaseEntity, transformerJson } from '../../base/entity/base';
+import { BaseEntity, transformerTextJson } from '../../base/entity/base';
 import { Column, Entity, Index } from 'typeorm';
 
 /**
@@ -52,9 +52,9 @@ export class OrderInfoEntity extends BaseEntity {
 
   @Column({
     type: 'tinyint',
-    comment: '支付方式：1微信 2支付宝 3余额',
+    comment: '支付方式：1微信 2支付宝 3余额 4模拟支付',
     nullable: true,
-    dict: ['', '微信', '支付宝', '余额'],
+    dict: ['', '微信', '支付宝', '余额', '模拟支付'],
   })
   payMethod: number;
 
@@ -81,7 +81,7 @@ export class OrderInfoEntity extends BaseEntity {
     type: 'text',
     comment: '支付参数JSON（如消息内容等附加参数）',
     nullable: true,
-    transformer: transformerJson,
+    transformer: transformerTextJson,
   })
   payParams: any;
 
