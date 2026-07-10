@@ -34,9 +34,12 @@ export class UserInfoService extends BaseService {
    * @param iv
    */
   async miniPhone(userId: number, code: any, encryptedData: any, iv: any) {
-    const phone = await this.userWxService.miniPhone(code, encryptedData, iv);
-    await this.userInfoEntity.update({ id: Equal(userId) }, { phone });
-    return phone;
+    const wxPhone = await this.userWxService.miniPhone(code, encryptedData, iv);
+    await this.userInfoEntity.update(
+      { id: Equal(userId) },
+      { phone: wxPhone.phone }
+    );
+    return wxPhone.phone;
   }
 
   /**

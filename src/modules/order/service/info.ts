@@ -10,6 +10,7 @@ import { PluginService } from '../../plugin/service/info';
 import { UserInfoEntity } from '../../user/entity/info';
 import { UserWxEntity } from '../../user/entity/wx';
 import { MessageInfoEntity } from '../../message/entity/info';
+import { UserWxService } from '../../user/service/wx';
 
 /** 支付方式 */
 export const PAY_METHOD = {
@@ -52,6 +53,9 @@ export class OrderInfoService extends BaseService {
   @Inject()
   pluginService: PluginService;
 
+  @Inject()
+  userWxService: UserWxService;
+
   /**
    * 创建订单
    * @param userId 用户ID
@@ -86,9 +90,7 @@ export class OrderInfoService extends BaseService {
         status: Equal(1),
       });
       if (!product) throw new CoolCommException('商品不存在或已下架');
-      payAmount = Number(
-        (Number(product.sellPrice) * quantity).toFixed(2)
-      );
+      payAmount = Number((Number(product.sellPrice) * quantity).toFixed(2));
       productName = product.name;
       messageQuota = product.messageQuota * quantity;
     } else {
@@ -110,9 +112,9 @@ export class OrderInfoService extends BaseService {
     }
 
     // 生成订单号
-    const plugin = await this.pluginService.getInstance('pay-wx').catch(
-      () => null
-    );
+    const plugin = await this.pluginService
+      .getInstance('pay-wx')
+      .catch(() => null);
     const orderNo = plugin
       ? plugin.createOrderNum(userId.toString())
       : `BYSC${Date.now()}${userId}`;
@@ -156,7 +158,13 @@ export class OrderInfoService extends BaseService {
    * @param payMethod 支付方式
    * @param ctx 请求上下文（获取 openid 等）
    */
-  async pay(userId: number, orderId: number, payMethod: number, ctx?: any) {
+  async pay(
+    userId: number,
+    orderId: number,
+    payMethod: number,
+    ctx?: any,
+    params: any = {}
+  ) {
     const order = await this.orderInfoEntity.findOneBy({
       id: Equal(orderId),
       userId: Equal(userId),
@@ -170,7 +178,7 @@ export class OrderInfoService extends BaseService {
     await this.orderInfoEntity.update(order.id, { payMethod });
 
     if (payMethod === PAY_METHOD.WECHAT) {
-      return this.payByWechat(order, userId);
+      return this.payByWechat(order, userId, ctx, params);
     } else if (payMethod === PAY_METHOD.BALANCE) {
       return this.payByBalance(order, userId);
     } else {
@@ -179,24 +187,14 @@ export class OrderInfoService extends BaseService {
   }
 
   /**
-   * 微信支付（小程序 JSAPI）
+   * 微信支付
    */
-  private async payByWechat(order: OrderInfoEntity, userId: number) {
-    // 获取用户 openid
-    const userInfo = await this.userInfoEntity.findOneBy({
-      id: Equal(userId),
-    });
-    if (!userInfo?.unionid) {
-      throw new CoolCommException('未绑定微信，无法使用微信支付');
-    }
-    const userWx = await this.userWxEntity.findOne({
-      where: { unionid: Equal(userInfo.unionid) },
-      order: { createTime: 'DESC' },
-    });
-    if (!userWx?.openid) {
-      throw new CoolCommException('未获取到微信openid，无法发起支付');
-    }
-
+  private async payByWechat(
+    order: OrderInfoEntity,
+    userId: number,
+    ctx?: any,
+    params: any = {}
+  ) {
     // 获取微信支付插件
     let plugin: any;
     try {
@@ -209,41 +207,197 @@ export class OrderInfoService extends BaseService {
 
     const config = await plugin.getConfig();
     const wxpay = await plugin.getInstance();
-
-    // 发起 JSAPI 预支付
-    const result = await wxpay.transactions_jsapi({
+    const tradeType = this.normalizeWechatTradeType(params.tradeType);
+    const clientIp =
+      order.clientIp || ctx?.request?.ip || ctx?.ip || '127.0.0.1';
+    const total = Math.round(Number(order.payAmount) * 100);
+    const baseParams = {
       appid: config.appid,
       mchid: config.mchid,
       description: order.productName,
       out_trade_no: order.orderNo,
       notify_url: config.notify_url,
       amount: {
-        total: Math.round(Number(order.payAmount) * 100),
+        total,
         currency: 'CNY',
       },
-      payer: { openid: userWx.openid },
+    };
+
+    if (tradeType === 'APP') {
+      const result = await wxpay.transactions_app({
+        ...baseParams,
+      });
+      const prepayId = result.prepay_id;
+      return {
+        orderId: order.id,
+        orderNo: order.orderNo,
+        payAmount: order.payAmount,
+        tradeType,
+        ...(await this.createWechatAppPayParams(config, plugin, prepayId)),
+      };
+    }
+
+    if (tradeType === 'H5') {
+      const result = await wxpay.transactions_h5({
+        ...baseParams,
+        scene_info: {
+          payer_client_ip: clientIp,
+          h5_info: {
+            type: params.h5Type || 'Wap',
+          },
+        },
+      });
+      return {
+        orderId: order.id,
+        orderNo: order.orderNo,
+        payAmount: order.payAmount,
+        tradeType,
+        h5Url: result.h5_url,
+        mwebUrl: result.h5_url,
+      };
+    }
+
+    const openid = await this.getWechatJsapiOpenid(userId, params.code);
+
+    // 发起 JSAPI 预支付
+    const result = await wxpay.transactions_jsapi({
+      ...baseParams,
+      payer: { openid },
     });
 
     // 生成小程序调起支付所需签名
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const nonceStr = crypto.randomBytes(16).toString('hex');
     const packageStr = `prepay_id=${result.prepay_id}`;
-    const signStr = `${config.appid}\n${timestamp}\n${nonceStr}\n${packageStr}\n`;
-    const paySign = crypto
-      .createSign('RSA-SHA256')
-      .update(signStr)
-      .sign(config.privateKey, 'base64');
+    const payParams = await this.createWechatPaySign(
+      config,
+      plugin,
+      packageStr
+    );
 
     return {
       orderId: order.id,
       orderNo: order.orderNo,
       payAmount: order.payAmount,
-      timeStamp: timestamp,
-      nonceStr,
+      tradeType,
+      ...payParams,
       package: packageStr,
+    };
+  }
+
+  private normalizeWechatTradeType(tradeType?: string) {
+    const value = (tradeType || 'JSAPI').toString().toUpperCase();
+    if (['JSAPI', 'APP', 'H5'].includes(value)) {
+      return value;
+    }
+    throw new CoolCommException('不支持的微信支付类型');
+  }
+
+  private async getWechatJsapiOpenid(userId: number, code?: string) {
+    let userInfo = await this.userInfoEntity.findOneBy({
+      id: Equal(userId),
+    });
+    if (!userInfo) {
+      throw new CoolCommException('用户不存在');
+    }
+
+    let userWx = userInfo.unionid
+      ? await this.userWxEntity.findOne({
+          where: { unionid: Equal(userInfo.unionid), type: Equal(0) },
+          order: { createTime: 'DESC' },
+        })
+      : null;
+    if (!userWx && userInfo.unionid) {
+      userWx = await this.userWxEntity.findOne({
+        where: { openid: Equal(userInfo.unionid), type: Equal(0) },
+        order: { createTime: 'DESC' },
+      });
+    }
+    if (userWx?.openid) {
+      return userWx.openid;
+    }
+
+    if (!code) {
+      throw new CoolCommException('未获取到微信openid，无法发起支付');
+    }
+
+    const session = await this.userWxService.miniSession(code);
+    if (session.errcode || !session.openid) {
+      throw new CoolCommException('获取微信openid失败，请重新发起支付');
+    }
+    const unionid = session.unionid || userInfo.unionid || session.openid;
+    if (!userInfo.unionid || userInfo.unionid === userInfo.phone) {
+      await this.userInfoEntity.update(userId, { unionid, loginType: 0 });
+    }
+    await this.userWxEntity.save({
+      openid: session.openid,
+      unionid,
+      type: 0,
+    });
+    return session.openid;
+  }
+
+  private async createWechatAppPayParams(
+    config: any,
+    plugin: any,
+    prepayId: string
+  ) {
+    const timeStamp = Math.floor(Date.now() / 1000).toString();
+    const nonceStr = crypto.randomBytes(16).toString('hex');
+    const packageStr = 'Sign=WXPay';
+    const signStr = `${config.appid}\n${timeStamp}\n${nonceStr}\n${prepayId}\n`;
+    const paySign = await this.signWechatString(config, plugin, signStr);
+    return {
+      appid: config.appid,
+      partnerid: config.mchid,
+      prepayid: prepayId,
+      package: packageStr,
+      noncestr: nonceStr,
+      timestamp: timeStamp,
+      sign: paySign,
+      orderInfo: {
+        appid: config.appid,
+        partnerid: config.mchid,
+        prepayid: prepayId,
+        package: packageStr,
+        noncestr: nonceStr,
+        timestamp: timeStamp,
+        sign: paySign,
+      },
+    };
+  }
+
+  private async createWechatPaySign(
+    config: any,
+    plugin: any,
+    packageStr: string
+  ) {
+    const timeStamp = Math.floor(Date.now() / 1000).toString();
+    const nonceStr = crypto.randomBytes(16).toString('hex');
+    const signStr = `${config.appid}\n${timeStamp}\n${nonceStr}\n${packageStr}\n`;
+    const paySign = await this.signWechatString(config, plugin, signStr);
+    return {
+      timeStamp,
+      nonceStr,
       signType: 'RSA',
       paySign,
     };
+  }
+
+  private async signWechatString(config: any, plugin: any, signStr: string) {
+    const privateKey = await this.getWechatPrivateKey(config, plugin);
+    return crypto
+      .createSign('RSA-SHA256')
+      .update(signStr)
+      .sign(privateKey, 'base64');
+  }
+
+  private async getWechatPrivateKey(config: any, plugin: any) {
+    if (config.privateKey?.includes?.('BEGIN')) {
+      return config.privateKey;
+    }
+    if (plugin.getBuffer && config.privateKey) {
+      return (await plugin.getBuffer(config.privateKey)).toString();
+    }
+    return config.privateKey;
   }
 
   /**
@@ -364,7 +518,8 @@ export class OrderInfoService extends BaseService {
         content,
         contentLength,
         smsCount,
-        isAnonymous: payParams.isAnonymous !== undefined ? payParams.isAnonymous : 1,
+        isAnonymous:
+          payParams.isAnonymous !== undefined ? payParams.isAnonymous : 1,
         senderSignature: payParams.senderSignature || null,
         sendType: payParams.sendType || 1,
         scheduledAt: payParams.scheduledAt || null,

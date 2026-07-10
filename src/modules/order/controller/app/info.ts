@@ -41,14 +41,17 @@ export class AppOrderInfoController extends BaseController {
   @Post('/pay', { summary: '发起支付' })
   async pay(
     @Body('orderId') orderId: number,
-    @Body('payMethod') payMethod: number
+    @Body('payMethod') payMethod: number,
+    @Body('tradeType') tradeType?: string,
+    @Body('code') code?: string
   ) {
     return this.ok(
       await this.orderInfoService.pay(
         this.ctx.user.id,
         orderId,
         payMethod,
-        this.ctx
+        this.ctx,
+        { tradeType, code }
       )
     );
   }

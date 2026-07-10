@@ -264,7 +264,11 @@ export class UserWxService extends BaseService {
       iv,
       session.session_key
     );
-    return result.phoneNumber;
+    return {
+      phone: result.phoneNumber,
+      openid: session['openid'],
+      unionid: session['unionid'],
+    };
   }
 
   /**

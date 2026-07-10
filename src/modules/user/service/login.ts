@@ -75,9 +75,36 @@ export class UserLoginService extends BaseService {
    * @param iv
    */
   async miniPhone(code, encryptedData, iv) {
-    const phone = await this.userWxService.miniPhone(code, encryptedData, iv);
-    if (phone) {
-      return await this.phone(phone);
+    const wxPhone = await this.userWxService.miniPhone(code, encryptedData, iv);
+    if (wxPhone?.phone) {
+      let user: any = await this.userInfoEntity.findOneBy({
+        phone: Equal(wxPhone.phone),
+      });
+      const unionid = wxPhone.unionid || wxPhone.openid || wxPhone.phone;
+      if (!user) {
+        user = {
+          phone: wxPhone.phone,
+          unionid,
+          loginType: 0,
+          nickName: wxPhone.phone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2'),
+        };
+        const result: any = await this.userInfoEntity.insert(user);
+        user.id = result.identifiers?.[0]?.id;
+      } else if (!user.unionid || user.unionid === user.phone) {
+        await this.userInfoEntity.update(user.id, {
+          unionid,
+          loginType: 0,
+        });
+        user.unionid = unionid;
+      }
+      await this.saveWxInfo(
+        {
+          openid: wxPhone.openid,
+          unionid,
+        },
+        0
+      );
+      return this.token({ id: user.id });
     } else {
       throw new CoolCommException('获得手机号失败，请检查配置');
     }
