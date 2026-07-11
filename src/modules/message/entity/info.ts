@@ -159,6 +159,14 @@ export class MessageInfoEntity extends BaseEntity {
 
   @Column({
     type: 'tinyint',
+    comment: '支付来源 1套餐配额 2余额 3在线支付 4模拟支付',
+    nullable: true,
+    dict: ['套餐配额', '余额', '在线支付', '模拟支付'],
+  })
+  payType: number;
+
+  @Column({
+    type: 'tinyint',
     comment: '是否免费重发',
     default: 0,
   })

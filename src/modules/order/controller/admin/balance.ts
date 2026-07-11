@@ -54,11 +54,8 @@ export class AdminUserBalanceController extends BaseController {
       await this.userBalanceService.addQuota(userId, quota);
       await this.userBalanceService.addBalance(userId, amount || 0);
     } else {
-      await this.userBalanceService.deductQuota(
-        userId,
-        Math.abs(quota),
-        Math.abs(amount || 0)
-      );
+      await this.userBalanceService.deductQuota(userId, Math.abs(quota));
+      await this.userBalanceService.deductBalance(userId, Math.abs(amount || 0));
     }
     return this.ok();
   }

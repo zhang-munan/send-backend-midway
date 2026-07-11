@@ -25,6 +25,16 @@ export class ConversationTimelineEntity extends BaseEntity {
   @Column({ type: 'decimal', precision: 10, scale: 2, comment: '发送费用', nullable: true })
   feeAmount: number;
 
+  @Column({ type: 'tinyint', comment: '计费条数', nullable: true })
+  smsCount: number;
+
+  @Column({
+    type: 'tinyint',
+    comment: '支付来源 1套餐配额 2余额 3在线支付 4模拟支付',
+    nullable: true,
+  })
+  payType: number;
+
   @Column({
     type: 'tinyint',
     comment: '状态',

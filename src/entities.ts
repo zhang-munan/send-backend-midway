@@ -1,47 +1,45 @@
 // 自动生成的文件，请勿手动修改
-import * as entityFeedback0 from './modules/feedback/entity/info';
 import * as entity0 from './modules/user/entity/wx';
 import * as entity1 from './modules/user/entity/info';
-import * as entityOrder0 from './modules/order/entity/product';
-import * as entityOrder1 from './modules/order/entity/info';
-import * as entityOrder2 from './modules/order/entity/balance';
 import * as entity2 from './modules/user/entity/address';
 import * as entity3 from './modules/template/entity/info';
 import * as entity4 from './modules/template/entity/collect';
-import * as entity5 from './modules/task/entity/log';
-import * as entity6 from './modules/task/entity/info';
-import * as entity7 from './modules/space/entity/type';
-import * as entity8 from './modules/space/entity/info';
-import * as entity9 from './modules/recycle/entity/data';
-import * as entity10 from './modules/plugin/entity/info';
-import * as entity11 from './modules/message/entity/info';
-import * as entity12 from './modules/dict/entity/type';
-import * as entity13 from './modules/dict/entity/info';
-import * as entity14 from './modules/demo/entity/goods';
-import * as entity15 from './modules/conversation/entity/timeline';
-import * as entity16 from './modules/conversation/entity/info';
-import * as entity17 from './modules/base/entity/base';
-import * as entity18 from './modules/base/entity/sys/user_role';
-import * as entity19 from './modules/base/entity/sys/user';
-import * as entity20 from './modules/base/entity/sys/role_menu';
-import * as entity21 from './modules/base/entity/sys/role_department';
-import * as entity22 from './modules/base/entity/sys/role';
-import * as entity23 from './modules/base/entity/sys/param';
-import * as entity24 from './modules/base/entity/sys/menu';
-import * as entity25 from './modules/base/entity/sys/log';
-import * as entity26 from './modules/base/entity/sys/department';
-import * as entity27 from './modules/base/entity/sys/conf';
-import * as entitySetting0 from './modules/setting/entity/user_setting';
-import * as entitySetting1 from './modules/setting/entity/doc';
-import * as entitySetting2 from './modules/setting/entity/notify_template';
-import * as entitySetting3 from './modules/setting/entity/sms_config';
+import * as entity5 from './modules/template/entity/category';
+import * as entity6 from './modules/task/entity/log';
+import * as entity7 from './modules/task/entity/info';
+import * as entity8 from './modules/space/entity/type';
+import * as entity9 from './modules/space/entity/info';
+import * as entity10 from './modules/setting/entity/user_setting';
+import * as entity11 from './modules/setting/entity/sms_config';
+import * as entity12 from './modules/setting/entity/notify_template';
+import * as entity13 from './modules/setting/entity/doc';
+import * as entity14 from './modules/recycle/entity/data';
+import * as entity15 from './modules/plugin/entity/info';
+import * as entity16 from './modules/order/entity/product';
+import * as entity17 from './modules/order/entity/info';
+import * as entity18 from './modules/order/entity/balance';
+import * as entity19 from './modules/message/entity/reply';
+import * as entity20 from './modules/message/entity/info';
+import * as entity21 from './modules/feedback/entity/info';
+import * as entity22 from './modules/dict/entity/type';
+import * as entity23 from './modules/dict/entity/info';
+import * as entity24 from './modules/demo/entity/goods';
+import * as entity25 from './modules/conversation/entity/timeline';
+import * as entity26 from './modules/conversation/entity/info';
+import * as entity27 from './modules/base/entity/base';
+import * as entity28 from './modules/base/entity/sys/user_role';
+import * as entity29 from './modules/base/entity/sys/user';
+import * as entity30 from './modules/base/entity/sys/role_menu';
+import * as entity31 from './modules/base/entity/sys/role_department';
+import * as entity32 from './modules/base/entity/sys/role';
+import * as entity33 from './modules/base/entity/sys/param';
+import * as entity34 from './modules/base/entity/sys/menu';
+import * as entity35 from './modules/base/entity/sys/log';
+import * as entity36 from './modules/base/entity/sys/department';
+import * as entity37 from './modules/base/entity/sys/conf';
 export const entities = [
-  ...Object.values(entityFeedback0),
   ...Object.values(entity0),
   ...Object.values(entity1),
-  ...Object.values(entityOrder0),
-  ...Object.values(entityOrder1),
-  ...Object.values(entityOrder2),
   ...Object.values(entity2),
   ...Object.values(entity3),
   ...Object.values(entity4),
@@ -68,8 +66,14 @@ export const entities = [
   ...Object.values(entity25),
   ...Object.values(entity26),
   ...Object.values(entity27),
-  ...Object.values(entitySetting0),
-  ...Object.values(entitySetting1),
-  ...Object.values(entitySetting2),
-  ...Object.values(entitySetting3),
+  ...Object.values(entity28),
+  ...Object.values(entity29),
+  ...Object.values(entity30),
+  ...Object.values(entity31),
+  ...Object.values(entity32),
+  ...Object.values(entity33),
+  ...Object.values(entity34),
+  ...Object.values(entity35),
+  ...Object.values(entity36),
+  ...Object.values(entity37),
 ];

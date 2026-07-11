@@ -105,6 +105,7 @@ export class MessageInfoService extends BaseService {
     messageInfo.status = 0; // 待审核
     messageInfo.auditStatus = 0; // 待审核
     messageInfo.feeAmount = feeAmount;
+    messageInfo.payType = 1;
     messageInfo.clientIp = params.clientIp || null;
 
     const savedMessage = await this.messageInfoEntity.save(messageInfo);
@@ -149,6 +150,8 @@ export class MessageInfoService extends BaseService {
       direction: 1,
       contentPreview: message.content.slice(0, 100),
       feeAmount: message.feeAmount,
+      smsCount: message.smsCount,
+      payType: message.payType,
     });
     await this.conversationInfoService.updateLastMsg(
       conversation.id,

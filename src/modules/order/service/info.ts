@@ -426,11 +426,7 @@ export class OrderInfoService extends BaseService {
     );
     if (!enough) throw new CoolCommException('余额不足');
 
-    await this.userBalanceService.deductQuota(
-      userId,
-      0,
-      Number(order.payAmount)
-    );
+    await this.userBalanceService.deductBalance(userId, Number(order.payAmount));
 
     await this.orderInfoEntity.update(order.id, {
       status: ORDER_STATUS.PAID,
@@ -553,6 +549,7 @@ export class OrderInfoService extends BaseService {
         status: 0, // 待审核
         auditStatus: 0,
         feeAmount: Number(order.payAmount),
+        payType: this.getMessagePayType(order.payMethod),
         retryCount: 0,
         isFreeRetry: 0,
       });
@@ -575,6 +572,12 @@ export class OrderInfoService extends BaseService {
       }
     }
     return payParams;
+  }
+
+  private getMessagePayType(payMethod?: number) {
+    if (payMethod === PAY_METHOD.BALANCE) return 2;
+    if (payMethod === PAY_METHOD.MOCK) return 4;
+    return 3;
   }
 
   private async createConversationTimeline(
@@ -602,6 +605,8 @@ export class OrderInfoService extends BaseService {
       direction: 1,
       contentPreview: message.content.slice(0, 100),
       feeAmount: message.feeAmount,
+      smsCount: message.smsCount,
+      payType: message.payType,
     });
     await this.conversationInfoService.updateLastMsg(
       conversation.id,

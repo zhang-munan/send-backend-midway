@@ -81,18 +81,15 @@ export class UserBalanceService extends BaseService {
 
   /**
    * 扣减消息条数配额（发送消息时调用）
-   * 使用原子 SQL 确保不超扣，余额最低减至 0
+   * 使用原子 SQL 确保不超扣，余额支付不走这里
    * @param userId 用户ID
    * @param quota 扣减条数（使用配额发送时传 smsCount，余额支付套餐时传 0）
-   * @param feeAmount 扣费金额
+   * @param feeAmount 本次套餐消耗对应的统计金额，不扣账户余额
    */
-  async deductQuota(userId: number, quota: number, feeAmount: number) {
+  async deductQuota(userId: number, quota: number, feeAmount = 0) {
     const record = await this.getOrInit(userId);
     if (record.messageQuota < quota) {
       throw new CoolCommException('消息条数不足，请先购买套餐');
-    }
-    if (feeAmount > 0 && Number(record.balance) < feeAmount) {
-      throw new CoolCommException('余额不足');
     }
     const fee = Number(feeAmount.toFixed(2));
     await this.userBalanceEntity
@@ -100,7 +97,29 @@ export class UserBalanceService extends BaseService {
       .update(UserBalanceEntity)
       .set({
         messageQuota: () => `messageQuota - ${quota}`,
-        balance: () => `ROUND(GREATEST(0, balance - ${fee}), 2)`,
+        totalConsumed: () => `ROUND(totalConsumed + ${fee}, 2)`,
+      })
+      .where('userId = :userId', { userId })
+      .execute();
+  }
+
+  /**
+   * 扣减账户余额（余额支付时调用）
+   * @param userId 用户ID
+   * @param amount 扣减金额
+   */
+  async deductBalance(userId: number, amount: number) {
+    const fee = Number(amount.toFixed(2));
+    if (fee <= 0) return;
+    const record = await this.getOrInit(userId);
+    if (Number(record.balance) < fee) {
+      throw new CoolCommException('余额不足');
+    }
+    await this.userBalanceEntity
+      .createQueryBuilder()
+      .update(UserBalanceEntity)
+      .set({
+        balance: () => `ROUND(balance - ${fee}, 2)`,
         totalConsumed: () => `ROUND(totalConsumed + ${fee}, 2)`,
       })
       .where('userId = :userId', { userId })
