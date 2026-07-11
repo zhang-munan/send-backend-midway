@@ -95,14 +95,14 @@ export class OrderInfoService extends BaseService {
         status: Equal(1),
       });
       if (!product) throw new CoolCommException('商品不存在或已下架');
-      payAmount = Number((Number(product.sellPrice) * quantity).toFixed(2));
+      payAmount = Number(product.sellPrice) * quantity;
       productName = product.name;
       messageQuota = product.messageQuota * quantity;
     } else {
-      // 未指定商品时，按消息条数计费（每条0.05元，70字/条）
+      // 未指定商品时，按消息条数计费（每条 5 分，70字/条）
       const contentLen = content ? content.length : 0;
       const smsCount = Math.ceil(contentLen / 70) || 1;
-      payAmount = Number((smsCount * 0.05).toFixed(2));
+      payAmount = smsCount * 5;
       productName = `单条短信发送（${smsCount}条）`;
       messageQuota = 0; // 按次不累积配额
     }
@@ -226,7 +226,8 @@ export class OrderInfoService extends BaseService {
     const tradeType = this.normalizeWechatTradeType(params.tradeType);
     const clientIp =
       order.clientIp || ctx?.request?.ip || ctx?.ip || '127.0.0.1';
-    const total = Math.round(Number(order.payAmount) * 100);
+    // 微信支付金额单位为分，订单金额已按分存储。
+    const total = Number(order.payAmount);
     const baseParams = {
       appid: config.appid,
       mchid: config.mchid,

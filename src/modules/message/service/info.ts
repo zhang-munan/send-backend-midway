@@ -238,8 +238,8 @@ export class MessageInfoService extends BaseService {
    */
   calculateFee(content: string) {
     const smsCount = Math.ceil(content.length / 70);
-    // 每条0.05元
-    return Number((smsCount * 0.05).toFixed(2));
+    // 每条 5 分
+    return smsCount * 5;
   }
 
   /**

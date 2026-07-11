@@ -16,19 +16,17 @@ export class ProductInfoEntity extends BaseEntity {
   description: string;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '原价',
+    type: 'bigint',
+    unsigned: true,
+    comment: '原价（分）',
     default: 0,
   })
   originalPrice: number;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '售价',
+    type: 'bigint',
+    unsigned: true,
+    comment: '售价（分）',
     default: 0,
   })
   sellPrice: number;

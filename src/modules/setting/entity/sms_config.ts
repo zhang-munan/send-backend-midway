@@ -34,6 +34,6 @@ export class SettingSmsConfigEntity extends BaseEntity {
   @Column({ type: 'int', comment: '日发送上限', default: 10000 })
   dailyLimit: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, comment: '通道余额', nullable: true })
+  @Column({ type: 'bigint', unsigned: true, comment: '通道余额（分）', nullable: true })
   balance: number;
 }

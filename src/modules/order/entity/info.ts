@@ -24,28 +24,25 @@ export class OrderInfoEntity extends BaseEntity {
   quantity: number;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '商品原价',
+    type: 'bigint',
+    unsigned: true,
+    comment: '商品原价（分）',
     default: 0,
   })
   originalPrice: number;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '优惠金额',
+    type: 'bigint',
+    unsigned: true,
+    comment: '优惠金额（分）',
     default: 0,
   })
   discountAmount: number;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '实付金额',
+    type: 'bigint',
+    unsigned: true,
+    comment: '实付金额（分）',
     default: 0,
   })
   payAmount: number;
@@ -86,10 +83,9 @@ export class OrderInfoEntity extends BaseEntity {
   payParams: any;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '退款金额',
+    type: 'bigint',
+    unsigned: true,
+    comment: '退款金额（分）',
     default: 0,
   })
   refundAmount: number;

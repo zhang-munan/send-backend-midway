@@ -11,10 +11,9 @@ export class DemoGoodsEntity extends BaseEntity {
   title: string;
 
   @Column({
-    comment: '价格',
-    type: 'decimal',
-    precision: 5,
-    scale: 2,
+    comment: '价格（分）',
+    type: 'bigint',
+    unsigned: true,
   })
   price: number;
 

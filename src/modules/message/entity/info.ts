@@ -149,11 +149,10 @@ export class MessageInfoEntity extends BaseEntity {
   retryCount: number;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '扣费金额',
-    default: 0.00,
+    type: 'bigint',
+    unsigned: true,
+    comment: '扣费金额（分）',
+    default: 0,
   })
   feeAmount: number;
 

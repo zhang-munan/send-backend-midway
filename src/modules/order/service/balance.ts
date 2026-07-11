@@ -65,15 +65,15 @@ export class UserBalanceService extends BaseService {
    * @param amount 充值金额
    */
   async addBalance(userId: number, amount: number) {
-    const fee = Number(amount.toFixed(2));
+    const fee = Math.round(amount);
     if (fee <= 0) return;
     await this.getOrInit(userId);
     await this.userBalanceEntity
       .createQueryBuilder()
       .update(UserBalanceEntity)
       .set({
-        balance: () => `ROUND(balance + ${fee}, 2)`,
-        totalRecharge: () => `ROUND(totalRecharge + ${fee}, 2)`,
+        balance: () => `balance + ${fee}`,
+        totalRecharge: () => `totalRecharge + ${fee}`,
       })
       .where('userId = :userId', { userId })
       .execute();
@@ -91,13 +91,13 @@ export class UserBalanceService extends BaseService {
     if (record.messageQuota < quota) {
       throw new CoolCommException('消息条数不足，请先购买套餐');
     }
-    const fee = Number(feeAmount.toFixed(2));
+    const fee = Math.round(feeAmount);
     await this.userBalanceEntity
       .createQueryBuilder()
       .update(UserBalanceEntity)
       .set({
         messageQuota: () => `messageQuota - ${quota}`,
-        totalConsumed: () => `ROUND(totalConsumed + ${fee}, 2)`,
+        totalConsumed: () => `totalConsumed + ${fee}`,
       })
       .where('userId = :userId', { userId })
       .execute();
@@ -109,7 +109,7 @@ export class UserBalanceService extends BaseService {
    * @param amount 扣减金额
    */
   async deductBalance(userId: number, amount: number) {
-    const fee = Number(amount.toFixed(2));
+    const fee = Math.round(amount);
     if (fee <= 0) return;
     const record = await this.getOrInit(userId);
     if (Number(record.balance) < fee) {
@@ -119,8 +119,8 @@ export class UserBalanceService extends BaseService {
       .createQueryBuilder()
       .update(UserBalanceEntity)
       .set({
-        balance: () => `ROUND(balance - ${fee}, 2)`,
-        totalConsumed: () => `ROUND(totalConsumed + ${fee}, 2)`,
+        balance: () => `balance - ${fee}`,
+        totalConsumed: () => `totalConsumed + ${fee}`,
       })
       .where('userId = :userId', { userId })
       .execute();

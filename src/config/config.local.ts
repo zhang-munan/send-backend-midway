@@ -16,7 +16,8 @@ export default {
         password: 'Secret@mysql8.0',
         database: 'db_bangni',
         // 自动建表 注意：线上部署的时候不要使用，有可能导致数据丢失
-        synchronize: true,
+        // 不允许自动修改已存在的表结构；金额迁移等变更必须通过 SQL 脚本执行。
+        synchronize: false,
         // 打印日志
         logging: false,
         // 字符集

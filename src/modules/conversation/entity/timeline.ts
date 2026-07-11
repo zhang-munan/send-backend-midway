@@ -22,7 +22,7 @@ export class ConversationTimelineEntity extends BaseEntity {
   @Column({ type: 'varchar', length: 100, comment: '内容摘要' })
   contentPreview: string;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, comment: '发送费用', nullable: true })
+  @Column({ type: 'bigint', unsigned: true, comment: '发送费用（分）', nullable: true })
   feeAmount: number;
 
   @Column({ type: 'tinyint', comment: '计费条数', nullable: true })

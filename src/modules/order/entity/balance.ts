@@ -11,10 +11,9 @@ export class UserBalanceEntity extends BaseEntity {
   userId: number;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '当前余额',
+    type: 'bigint',
+    unsigned: true,
+    comment: '当前余额（分）',
     default: 0,
   })
   balance: number;
@@ -23,19 +22,17 @@ export class UserBalanceEntity extends BaseEntity {
   messageQuota: number;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '累计充值',
+    type: 'bigint',
+    unsigned: true,
+    comment: '累计充值（分）',
     default: 0,
   })
   totalRecharge: number;
 
   @Column({
-    type: 'decimal',
-    precision: 10,
-    scale: 2,
-    comment: '累计消费',
+    type: 'bigint',
+    unsigned: true,
+    comment: '累计消费（分）',
     default: 0,
   })
   totalConsumed: number;
