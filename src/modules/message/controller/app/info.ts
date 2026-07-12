@@ -71,7 +71,9 @@ export class AppMessageInfoController extends BaseController {
    */
   @Get('/messageDetail', { summary: '消息详情' })
   async messageDetail(@Query('id') id: number) {
-    return this.ok(await this.messageInfoService.messageDetail(this.ctx.user.id, id));
+    return this.ok(
+      await this.messageInfoService.messageDetail(this.ctx.user.id, id)
+    );
   }
 
   /**
@@ -89,6 +91,8 @@ export class AppMessageInfoController extends BaseController {
    */
   @Post('/calculateFee', { summary: '计算发送费用' })
   async calculateFee(@Body('content') content: string) {
-    return this.ok({ feeAmount: this.messageInfoService.calculateFee(content) });
+    return this.ok({
+      feeAmount: this.messageInfoService.calculateFee(content),
+    });
   }
 }

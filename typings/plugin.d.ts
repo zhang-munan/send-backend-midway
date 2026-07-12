@@ -1,3 +1,4 @@
+import * as upload_oss from './upload-oss';
 import * as sms_tx from './sms-tx';
 import * as pay_wx from './pay-wx';
 import * as wx from './wx';
@@ -11,4 +12,5 @@ interface PluginMap {
   wx: wx.CoolPlugin;
   'pay-wx': pay_wx.CoolPlugin;
   'sms-tx': sms_tx.CoolPlugin;
+  'upload-oss': upload_oss.CoolPlugin;
 }

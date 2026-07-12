@@ -12,6 +12,17 @@ export class ProductInfoEntity extends BaseEntity {
   @Column({ type: 'varchar', length: 200, comment: '副标题/宣传语', nullable: true })
   subtitle: string;
 
+  @Column({ type: 'varchar', length: 30, comment: '套餐角标内容', nullable: true })
+  tagContent: string;
+
+  @Column({
+    type: 'varchar',
+    length: 20,
+    comment: '套餐角标背景色',
+    nullable: true,
+  })
+  tagBackgroundColor: string;
+
   @Column({ type: 'text', comment: '套餐描述', nullable: true })
   description: string;
 
