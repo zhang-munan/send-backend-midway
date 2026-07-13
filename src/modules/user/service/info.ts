@@ -79,18 +79,30 @@ export class UserInfoService extends BaseService {
   async updatePerson(id, param) {
     const info = await this.person(id);
     if (!info) throw new CoolCommException('用户不存在');
+    // App 端只允许维护展示资料，避免通用更新接口被用于修改账号状态等字段。
+    const data = {
+      ...(typeof param.avatarUrl === 'string'
+        ? { avatarUrl: param.avatarUrl }
+        : {}),
+      ...(typeof param.nickName === 'string'
+        ? { nickName: param.nickName.trim().slice(0, 30) }
+        : {}),
+      ...(typeof param.description === 'string'
+        ? { description: param.description.trim().slice(0, 100) }
+        : {}),
+    };
     try {
       // 修改了头像要重新处理
-      if (param.avatarUrl && info.avatarUrl != param.avatarUrl) {
+      if (data.avatarUrl && info.avatarUrl != data.avatarUrl) {
         const file = await this.pluginService.getInstance('upload');
-        param.avatarUrl = await file.downAndUpload(
-          param.avatarUrl,
+        data.avatarUrl = await file.downAndUpload(
+          data.avatarUrl,
           uuid() + '.png'
         );
       }
     } catch (err) {}
     try {
-      return await this.userInfoEntity.update({ id }, param);
+      return await this.userInfoEntity.update({ id }, data);
     } catch (err) {
       throw new CoolCommException('更新失败，参数错误或者手机号已存在');
     }
