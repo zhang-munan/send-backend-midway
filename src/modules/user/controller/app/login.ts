@@ -16,6 +16,9 @@ import { BaseSysLoginService } from '../../../base/service/sys/login';
 @CoolController()
 export class AppUserLoginController extends BaseController {
   @Inject()
+  ctx;
+
+  @Inject()
   userLoginService: UserLoginService;
 
   @Inject()
@@ -26,6 +29,12 @@ export class AppUserLoginController extends BaseController {
   async mini(@Body() body) {
     const { code, encryptedData, iv } = body;
     return this.ok(await this.userLoginService.mini(code, encryptedData, iv));
+  }
+
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Post('/miniCode', { summary: '小程序静默登录' })
+  async miniCode(@Body('code') code: string) {
+    return this.ok(await this.userLoginService.miniCode(code));
   }
 
   @CoolTag(TagTypes.IGNORE_TOKEN)
@@ -64,6 +73,29 @@ export class AppUserLoginController extends BaseController {
     const { code, encryptedData, iv } = body;
     return this.ok(
       await this.userLoginService.miniPhone(code, encryptedData, iv)
+    );
+  }
+
+  @Post('/bindPhone', { summary: '绑定手机号' })
+  async bindPhone(
+    @Body('phone') phone: string,
+    @Body('smsCode') smsCode: string
+  ) {
+    return this.ok(
+      await this.userLoginService.bindPhone(this.ctx.user.id, phone, smsCode)
+    );
+  }
+
+  @Post('/bindMiniPhone', { summary: '绑定小程序手机号' })
+  async bindMiniPhone(@Body() body) {
+    const { code, encryptedData, iv } = body;
+    return this.ok(
+      await this.userLoginService.bindMiniPhone(
+        this.ctx.user.id,
+        code,
+        encryptedData,
+        iv
+      )
     );
   }
 

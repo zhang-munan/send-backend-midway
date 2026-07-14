@@ -238,6 +238,76 @@ export class UserLoginService extends BaseService {
   }
 
   /**
+   * 小程序静默登录。code 只用于识别微信身份，不请求用户资料或手机号授权。
+   */
+  async miniCode(code: string) {
+    const session: any = await this.userWxService.miniSession(code);
+    if (!session || session.errcode || !session.openid) {
+      throw new CoolCommException(session?.errmsg || '微信登录失败');
+    }
+
+    const unionid = session.unionid || session.openid;
+    let user: any = await this.userInfoEntity.findOneBy({ unionid });
+    if (!user) {
+      user = await this.userInfoEntity.save({
+        unionid,
+        nickName: '微信用户',
+        loginType: 0,
+      });
+    }
+    await this.saveWxInfo({ openid: session.openid, unionid }, 0);
+    return this.token({ id: user.id });
+  }
+
+  /**
+   * 为当前微信用户绑定手机号。若手机号属于旧版手机号登录账号，则接管该账号，
+   * 保留其订单、消息和会话等全部 userId 关联数据。
+   */
+  async bindPhone(userId: number, phone: string, smsCode: string) {
+    const valid = await this.userSmsService.checkCode(phone, smsCode);
+    if (!valid) throw new CoolCommException('验证码错误');
+    return this.bindPhoneToUser(userId, phone);
+  }
+
+  /** 为当前用户绑定微信授权手机号。 */
+  async bindMiniPhone(
+    userId: number,
+    code: string,
+    encryptedData: string,
+    iv: string
+  ) {
+    const wxPhone = await this.userWxService.miniPhone(code, encryptedData, iv);
+    if (!wxPhone?.phone) throw new CoolCommException('获得手机号失败，请检查配置');
+    return this.bindPhoneToUser(userId, wxPhone.phone);
+  }
+
+  private async bindPhoneToUser(userId: number, phone: string) {
+    const current: any = await this.userInfoEntity.findOneBy({ id: Equal(userId) });
+    if (!current) throw new CoolCommException('用户不存在');
+
+    const phoneOwner: any = await this.userInfoEntity.findOneBy({ phone: Equal(phone) });
+    if (!phoneOwner || phoneOwner.id === current.id) {
+      await this.userInfoEntity.update(current.id, { phone });
+      return this.token({ id: current.id });
+    }
+
+    // 兼容改版前“手机号即账号”的用户：切换回旧 userId，避免会话和订单丢失。
+    if (phoneOwner.unionid === phone) {
+      // unionid 有唯一索引，必须在同一事务中先释放临时用户的微信身份再迁移。
+      await this.userInfoEntity.manager.transaction(async manager => {
+        await manager.update(UserInfoEntity, current.id, { unionid: null });
+        await manager.update(UserInfoEntity, phoneOwner.id, {
+          unionid: current.unionid,
+          loginType: 0,
+        });
+      });
+      return this.token({ id: phoneOwner.id });
+    }
+
+    throw new CoolCommException('该手机号已绑定其他微信账号');
+  }
+
+  /**
    * 微信登录 获得token
    * @param wxUserInfo 微信用户信息
    * @returns
