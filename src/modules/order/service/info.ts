@@ -76,6 +76,7 @@ export class OrderInfoService extends BaseService {
       receiverPhone,
       content,
       isAnonymous,
+      isPublic,
       sendType,
       scheduledAt,
       templateId,
@@ -129,6 +130,7 @@ export class OrderInfoService extends BaseService {
       receiverPhone,
       content,
       isAnonymous: isAnonymous !== undefined ? isAnonymous : 1,
+      isPublic: isPublic === 1 || isPublic === true ? 1 : 0,
       sendType: sendType || 1,
       scheduledAt: scheduledAt || null,
       templateId: templateId || null,
@@ -544,6 +546,7 @@ export class OrderInfoService extends BaseService {
         smsCount,
         isAnonymous:
           payParams.isAnonymous !== undefined ? payParams.isAnonymous : 1,
+        isPublic: payParams.isPublic === 1 || payParams.isPublic === true ? 1 : 0,
         senderSignature: payParams.senderSignature || null,
         sendType: payParams.sendType || 1,
         scheduledAt: payParams.scheduledAt || null,

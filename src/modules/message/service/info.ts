@@ -37,6 +37,7 @@ export class MessageInfoService extends BaseService {
       templateId,
       conversationId,
       isAnonymous,
+      isPublic,
       senderSignature,
       sendType,
       scheduledAt,
@@ -99,6 +100,7 @@ export class MessageInfoService extends BaseService {
     messageInfo.contentLength = contentLength;
     messageInfo.smsCount = smsCount;
     messageInfo.isAnonymous = isAnonymous !== undefined ? isAnonymous : 1;
+    messageInfo.isPublic = isPublic === 1 || isPublic === true ? 1 : 0;
     messageInfo.senderSignature = senderSignature || null;
     messageInfo.sendType = sendType || 1;
     messageInfo.scheduledAt = scheduledAt || null;
@@ -257,6 +259,37 @@ export class MessageInfoService extends BaseService {
       skip: (page - 1) * size,
       take: size,
     });
+    return { list, total, page, size };
+  }
+
+  /**
+   * 广场公开消息。只暴露审核通过的内容和回复，避免泄露手机号、用户 ID 等私密字段。
+   */
+  async publicList(page: number, size: number) {
+    const skip = (page - 1) * size;
+    const qb = this.messageInfoEntity
+      .createQueryBuilder('message')
+      .leftJoin(
+        MessageReplyEntity,
+        'reply',
+        'reply.messageId = message.id AND reply.replyType = 1'
+      )
+      .where('message.isPublic = :isPublic', { isPublic: 1 })
+      .andWhere('message.auditStatus = :auditStatus', { auditStatus: 1 })
+      .select([
+        'message.id AS id',
+        'message.content AS content',
+        'message.isAnonymous AS isAnonymous',
+        'message.senderSignature AS senderSignature',
+        'message.createTime AS createTime',
+        'reply.replyContent AS replyContent',
+        'reply.receivedAt AS replyTime',
+      ])
+      .orderBy('message.createTime', 'DESC')
+      .skip(skip)
+      .take(size);
+
+    const [list, total] = await Promise.all([qb.getRawMany(), qb.getCount()]);
     return { list, total, page, size };
   }
 

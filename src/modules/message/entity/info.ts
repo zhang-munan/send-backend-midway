@@ -57,6 +57,13 @@ export class MessageInfoEntity extends BaseEntity {
   isAnonymous: number;
 
   @Column({
+    type: 'tinyint',
+    comment: '是否公开到广场 0私密 1公开',
+    default: 0,
+  })
+  isPublic: number;
+
+  @Column({
     type: 'varchar',
     length: 50,
     comment: '发送者签名',
