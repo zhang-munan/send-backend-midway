@@ -1,7 +1,7 @@
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Equal, MoreThan, Repository } from 'typeorm';
+import { Between, Equal, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { MessageInfoEntity } from '../entity/info';
 import { MessageReplyEntity } from '../entity/reply';
@@ -104,8 +104,9 @@ export class MessageInfoService extends BaseService {
     messageInfo.senderSignature = senderSignature || null;
     messageInfo.sendType = sendType || 1;
     messageInfo.scheduledAt = scheduledAt || null;
-    messageInfo.status = 0; // 待审核
-    messageInfo.auditStatus = 0; // 待审核
+    messageInfo.status = 1; // 审核通过
+    messageInfo.auditStatus = 1; // 审核通过
+    messageInfo.auditedAt = new Date();
     messageInfo.feeAmount = feeAmount;
     messageInfo.payType = 1;
     messageInfo.clientIp = params.clientIp || null;
@@ -291,6 +292,45 @@ export class MessageInfoService extends BaseService {
 
     const [list, total] = await Promise.all([qb.getRawMany(), qb.getCount()]);
     return { list, total, page, size };
+  }
+
+  /**
+   * 首页最近动态。AI 帮写尚未持久化调用日志，因此先稳定返回 0，待 AI
+   * 功能接入日志表后只需在这里补充统计，不影响客户端接口。
+   */
+  async recentActivity(userId: number) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    end.setMilliseconds(-1);
+
+    const [sentCount, replyCount] = await Promise.all([
+      this.messageInfoEntity.count({
+        where: {
+          userId: Equal(userId),
+          createTime: Between(start, end) as any,
+        },
+      }),
+      this.messageReplyEntity
+        .createQueryBuilder('reply')
+        .innerJoin(
+          MessageInfoEntity,
+          'message',
+          'message.id = reply.messageId'
+        )
+        .where('message.userId = :userId', { userId })
+        .andWhere('reply.replyType = :replyType', { replyType: 1 })
+        .andWhere('reply.receivedAt BETWEEN :start AND :end', { start, end })
+        .getCount(),
+    ]);
+
+    return {
+      sentCount,
+      replyCount,
+      aiUsageCount: 0,
+      date: start.toISOString(),
+    };
   }
 
   /**

@@ -550,8 +550,9 @@ export class OrderInfoService extends BaseService {
         senderSignature: payParams.senderSignature || null,
         sendType: payParams.sendType || 1,
         scheduledAt: payParams.scheduledAt || null,
-        status: 0, // 待审核
-        auditStatus: 0,
+        status: 1, // 审核通过
+        auditStatus: 1,
+        auditedAt: new Date(),
         feeAmount: Number(order.payAmount),
         payType: this.getMessagePayType(order.payMethod),
         retryCount: 0,
