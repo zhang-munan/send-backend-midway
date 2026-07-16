@@ -12,6 +12,10 @@ import { UserWxEntity } from '../../user/entity/wx';
 import { MessageInfoEntity } from '../../message/entity/info';
 import { UserWxService } from '../../user/service/wx';
 import { ConversationInfoService } from '../../conversation/service/info';
+import {
+  calculateSmsCount,
+  calculateSmsFee,
+} from '../../message/service/pricing';
 
 /** 支付方式 */
 export const PAY_METHOD = {
@@ -19,6 +23,7 @@ export const PAY_METHOD = {
   ALIPAY: 2,
   BALANCE: 3,
   MOCK: 4,
+  PACKAGE_BALANCE: 5,
 };
 
 /** 订单状态 */
@@ -100,10 +105,9 @@ export class OrderInfoService extends BaseService {
       productName = product.name;
       messageQuota = product.messageQuota * quantity;
     } else {
-      // 未指定商品时，按消息条数计费（每条 5 分，70字/条）
-      const contentLen = content ? content.length : 0;
-      const smsCount = Math.ceil(contentLen / 70) || 1;
-      payAmount = smsCount * 5;
+      // 未指定商品时，按字数计费（每 10 字 1.99 元）
+      const smsCount = calculateSmsCount(content || '');
+      payAmount = calculateSmsFee(content || '');
       productName = `单条短信发送（${smsCount}条）`;
       messageQuota = 0; // 按次不累积配额
     }
@@ -117,13 +121,8 @@ export class OrderInfoService extends BaseService {
       if (!enough) throw new CoolCommException('余额不足，请选择其他支付方式');
     }
 
-    // 生成订单号
-    const plugin = await this.pluginService
-      .getInstance('pay-wx')
-      .catch(() => null);
-    const orderNo = plugin
-      ? plugin.createOrderNum(userId.toString())
-      : `BYSC${Date.now()}${userId}`;
+    // 生成订单号：BNSC + YYYYMMDD + 五位数字
+    const orderNo = await this.generateOrderNo();
 
     // 消息参数存入 payParams
     const messageParams = {
@@ -202,6 +201,73 @@ export class OrderInfoService extends BaseService {
     return [process.env.NODE_ENV, process.env.MIDWAY_SERVER_ENV].some(env =>
       ['local', 'development'].includes(env || '')
     );
+  }
+
+  /**
+   * 生成格式为 BNSCYYYYMMDDXXXXX 的订单编号。
+   * 五位随机数字在当天范围内重试，避免与已有订单重复。
+   */
+  private async generateOrderNo(): Promise<string> {
+    const now = new Date();
+    const date = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('');
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const suffix = crypto.randomInt(0, 100000).toString().padStart(5, '0');
+      const orderNo = `BNSC${date}${suffix}`;
+      const existing = await this.orderInfoEntity.findOneBy({
+        orderNo: Equal(orderNo),
+      });
+      if (!existing) return orderNo;
+    }
+
+    throw new CoolCommException('订单编号生成失败，请重试');
+  }
+
+  /**
+   * 使用套餐消息配额发送，并同步生成一笔已支付的套餐余额订单。
+   */
+  async sendByPackageBalance(userId: number, params: any) {
+    const quotaToDeduct = 1;
+    const balance = await this.userBalanceService.getBalance(userId);
+    if (balance.messageQuota < quotaToDeduct) {
+      throw new CoolCommException(
+        `消息条数不足（剩余 ${balance.messageQuota} 条），请先购买套餐`
+      );
+    }
+
+    const orderNo = await this.generateOrderNo();
+    const order = await this.orderInfoEntity.save(
+      this.orderInfoEntity.create({
+        userId,
+        orderNo,
+        productId: null,
+        productName: '短信发送（套餐余额抵扣）',
+        quantity: 1,
+        originalPrice: 0,
+        discountAmount: 0,
+        payAmount: 0,
+        payMethod: PAY_METHOD.PACKAGE_BALANCE,
+        status: ORDER_STATUS.PAID,
+        payTime: new Date(),
+        tradeNo: `PACKAGE_BALANCE_${orderNo}`,
+        payParams: {
+          ...params,
+          messageQuota: 0,
+          smsCount: quotaToDeduct,
+          feeAmount: 0,
+        },
+        clientIp: params.clientIp || null,
+      })
+    );
+
+    await this.userBalanceService.deductQuota(userId, quotaToDeduct);
+    await this.createMessageAfterPaid(order);
+
+    return order;
   }
 
   /**
@@ -526,7 +592,9 @@ export class OrderInfoService extends BaseService {
       const receiverPhone: string = payParams.receiverPhone;
       const content: string = payParams.content;
       const contentLength = content.length;
-      const smsCount = Math.ceil(contentLength / 70);
+      const smsCount = Number(
+        payParams.smsCount ?? calculateSmsCount(content)
+      );
       const receiverPhoneMask =
         receiverPhone.substring(0, 3) + '****' + receiverPhone.substring(7);
       const receiverPhoneHash = crypto
@@ -553,7 +621,7 @@ export class OrderInfoService extends BaseService {
         status: 1, // 审核通过
         auditStatus: 1,
         auditedAt: new Date(),
-        feeAmount: Number(order.payAmount),
+        feeAmount: Number(payParams.feeAmount ?? order.payAmount),
         payType: this.getMessagePayType(order.payMethod),
         retryCount: 0,
         isFreeRetry: 0,
@@ -580,6 +648,7 @@ export class OrderInfoService extends BaseService {
   }
 
   private getMessagePayType(payMethod?: number) {
+    if (payMethod === PAY_METHOD.PACKAGE_BALANCE) return 1;
     if (payMethod === PAY_METHOD.BALANCE) return 2;
     if (payMethod === PAY_METHOD.MOCK) return 4;
     return 3;

@@ -5,8 +5,8 @@ import { Between, Equal, MoreThan, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { MessageInfoEntity } from '../entity/info';
 import { MessageReplyEntity } from '../entity/reply';
-import { UserBalanceService } from '../../order/service/balance';
-import { ConversationInfoService } from '../../conversation/service/info';
+import { OrderInfoService } from '../../order/service/info';
+import { calculateSmsFee } from './pricing';
 
 /**
  * 消息信息
@@ -20,13 +20,10 @@ export class MessageInfoService extends BaseService {
   messageReplyEntity: Repository<MessageReplyEntity>;
 
   @Inject()
-  userBalanceService: UserBalanceService;
-
-  @Inject()
-  conversationInfoService: ConversationInfoService;
+  orderInfoService: OrderInfoService;
 
   /**
-   * 发送消息（需先有足够的消息配额）
+   * 使用套餐配额发送消息，并生成对应的套餐余额订单。
    * @param userId 用户ID
    * @param params 消息参数
    */
@@ -34,11 +31,6 @@ export class MessageInfoService extends BaseService {
     const {
       receiverPhone,
       content,
-      templateId,
-      conversationId,
-      isAnonymous,
-      isPublic,
-      senderSignature,
       sendType,
       scheduledAt,
     } = params;
@@ -61,108 +53,8 @@ export class MessageInfoService extends BaseService {
     // 检查发送频率限制
     await this.checkQuota(userId, receiverPhone);
 
-    // 计算字数
-    const contentLength = content.length;
-
-    // 计算计费条数（70字/条）
-    const smsCount = Math.ceil(contentLength / 70);
-
-    // 检查用户消息配额（直接调用 sendMessage 时必须有足够配额）
-    const balance = await this.userBalanceService.getBalance(userId);
-    if (balance.messageQuota < smsCount) {
-      throw new CoolCommException(
-        `消息条数不足（剩余 ${balance.messageQuota} 条，本次需 ${smsCount} 条），请先购买套餐`
-      );
-    }
-
-    // 计算脱敏号码
-    const receiverPhoneMask =
-      receiverPhone.substring(0, 3) + '****' + receiverPhone.substring(7);
-
-    // 生成手机号哈希（SHA256）
-    const receiverPhoneHash = crypto
-      .createHash('sha256')
-      .update(receiverPhone)
-      .digest('hex');
-
-    // 计算费用
-    const feeAmount = this.calculateFee(content);
-
-    // 创建消息记录
-    const messageInfo = new MessageInfoEntity();
-    messageInfo.userId = userId;
-    messageInfo.templateId = templateId || null;
-    messageInfo.conversationId = conversationId || null;
-    messageInfo.receiverPhone = receiverPhone;
-    messageInfo.receiverPhoneMask = receiverPhoneMask;
-    messageInfo.receiverPhoneHash = receiverPhoneHash;
-    messageInfo.content = content;
-    messageInfo.contentLength = contentLength;
-    messageInfo.smsCount = smsCount;
-    messageInfo.isAnonymous = isAnonymous !== undefined ? isAnonymous : 1;
-    messageInfo.isPublic = isPublic === 1 || isPublic === true ? 1 : 0;
-    messageInfo.senderSignature = senderSignature || null;
-    messageInfo.sendType = sendType || 1;
-    messageInfo.scheduledAt = scheduledAt || null;
-    messageInfo.status = 1; // 审核通过
-    messageInfo.auditStatus = 1; // 审核通过
-    messageInfo.auditedAt = new Date();
-    messageInfo.feeAmount = feeAmount;
-    messageInfo.payType = 1;
-    messageInfo.clientIp = params.clientIp || null;
-
-    const savedMessage = await this.messageInfoEntity.save(messageInfo);
-
-    await this.createConversationTimeline(
-      savedMessage,
-      receiverPhoneHash,
-      receiverPhoneMask
-    );
-
-    // 扣减用户消息配额
-    await this.userBalanceService.deductQuota(userId, smsCount, feeAmount);
-
-    return savedMessage;
+    return this.orderInfoService.sendByPackageBalance(userId, params);
   }
-
-  /**
-   * 创建/更新对话及发出消息时间线
-   */
-  private async createConversationTimeline(
-    message: MessageInfoEntity,
-    receiverPhoneHash: string,
-    receiverPhoneMask: string
-  ) {
-    const conversation = message.conversationId
-      ? { id: message.conversationId }
-      : await this.conversationInfoService.getOrCreate(
-          message.userId,
-          receiverPhoneHash,
-          receiverPhoneMask
-        );
-
-    if (!message.conversationId) {
-      message.conversationId = conversation.id;
-      await this.messageInfoEntity.update(message.id, {
-        conversationId: conversation.id,
-      });
-    }
-
-    await this.conversationInfoService.addTimelineItem(conversation.id, {
-      messageId: message.id,
-      direction: 1,
-      contentPreview: message.content.slice(0, 100),
-      feeAmount: message.feeAmount,
-      smsCount: message.smsCount,
-      payType: message.payType,
-    });
-    await this.conversationInfoService.updateLastMsg(
-      conversation.id,
-      message.content.slice(0, 100),
-      0
-    );
-  }
-
   /**
    * 取消定时消息
    * @param userId 用户ID
@@ -240,9 +132,7 @@ export class MessageInfoService extends BaseService {
    * @param content 消息内容
    */
   calculateFee(content: string) {
-    const smsCount = Math.ceil(content.length / 70);
-    // 每条 5 分
-    return smsCount * 5;
+    return calculateSmsFee(content);
   }
 
   /**
@@ -294,10 +184,7 @@ export class MessageInfoService extends BaseService {
     return { list, total, page, size };
   }
 
-  /**
-   * 首页最近动态。AI 帮写尚未持久化调用日志，因此先稳定返回 0，待 AI
-   * 功能接入日志表后只需在这里补充统计，不影响客户端接口。
-   */
+  /** 首页最近动态：当前用户当日发送、收到回复与已送达消息数。 */
   async recentActivity(userId: number) {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -305,7 +192,7 @@ export class MessageInfoService extends BaseService {
     end.setDate(end.getDate() + 1);
     end.setMilliseconds(-1);
 
-    const [sentCount, replyCount] = await Promise.all([
+    const [sentCount, replyCount, deliveredCount] = await Promise.all([
       this.messageInfoEntity.count({
         where: {
           userId: Equal(userId),
@@ -323,12 +210,19 @@ export class MessageInfoService extends BaseService {
         .andWhere('reply.replyType = :replyType', { replyType: 1 })
         .andWhere('reply.receivedAt BETWEEN :start AND :end', { start, end })
         .getCount(),
+      this.messageInfoEntity.count({
+        where: {
+          userId: Equal(userId),
+          status: 5,
+          deliveredAt: Between(start, end) as any,
+        },
+      }),
     ]);
 
     return {
       sentCount,
       replyCount,
-      aiUsageCount: 0,
+      deliveredCount,
       date: start.toISOString(),
     };
   }

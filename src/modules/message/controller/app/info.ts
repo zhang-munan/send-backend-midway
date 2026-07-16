@@ -76,7 +76,7 @@ export class AppMessageInfoController extends BaseController {
     return this.ok(await this.messageInfoService.publicList(page, size));
   }
 
-  /** 首页最近动态（当前用户当日发送、收到回复与 AI 使用汇总） */
+  /** 首页最近动态（当前用户当日发送、收到回复与送达汇总） */
   @Get('/recentActivity', { summary: '首页最近动态' })
   async recentActivity() {
     return this.ok(

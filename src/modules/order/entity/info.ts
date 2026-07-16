@@ -49,9 +49,9 @@ export class OrderInfoEntity extends BaseEntity {
 
   @Column({
     type: 'tinyint',
-    comment: '支付方式：1微信 2支付宝 3余额 4模拟支付',
+    comment: '支付方式：1微信 2支付宝 3余额 4模拟支付 5套餐余额',
     nullable: true,
-    dict: ['', '微信', '支付宝', '余额', '模拟支付'],
+    dict: ['', '微信', '支付宝', '余额', '模拟支付', '套餐余额'],
   })
   payMethod: number;
 
