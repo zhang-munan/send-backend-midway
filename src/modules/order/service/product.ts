@@ -26,6 +26,9 @@ export class ProductInfoService extends BaseService {
    * 获取商品详情
    */
   async getProduct(id: number) {
-    return this.productInfoEntity.findOneBy({ id: Equal(id), status: Equal(1) });
+    return this.productInfoEntity.findOneBy({
+      id: Equal(id),
+      status: Equal(1),
+    });
   }
 }

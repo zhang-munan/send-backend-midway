@@ -17,7 +17,12 @@ export class ConversationInfoEntity extends BaseEntity {
   @Column({ type: 'varchar', length: 20, comment: '收件人脱敏号码' })
   receiverPhoneMask: string;
 
-  @Column({ type: 'varchar', length: 100, comment: '最后一条消息摘要', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 100,
+    comment: '最后一条消息摘要',
+    nullable: true,
+  })
   lastMsgContent: string;
 
   @Column({ type: 'datetime', comment: '最后消息时间', nullable: true })
@@ -38,7 +43,12 @@ export class ConversationInfoEntity extends BaseEntity {
   @Column({ type: 'tinyint', comment: '是否标记重要', default: 0 })
   isMarked: number;
 
-  @Column({ type: 'varchar', length: 20, comment: '标记类型 important/processed/ended', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 20,
+    comment: '标记类型 important/processed/ended',
+    nullable: true,
+  })
   markType: string;
 
   @Column({

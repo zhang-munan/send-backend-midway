@@ -14,9 +14,15 @@ import { MessageInfoService } from '../../service/info';
   pageQueryOp: {
     fieldEq: ['a.status', 'a.auditStatus', 'a.sendType', 'a.isAnonymous'],
     fieldLike: ['a.receiverPhoneMask', 'a.receiverPhone'],
-    keyWordLikeFields: ['a.receiverPhoneMask', 'a.senderSignature', 'a.failReason'],
+    keyWordLikeFields: [
+      'a.receiverPhoneMask',
+      'a.senderSignature',
+      'a.failReason',
+    ],
     select: ['a.*', 'b.nickName as senderNickName'],
-    join: [{ entity: UserInfoEntity, alias: 'b', condition: 'a.userId = b.id' }],
+    join: [
+      { entity: UserInfoEntity, alias: 'b', condition: 'a.userId = b.id' },
+    ],
   },
 })
 export class AdminMessageInfoController extends BaseController {

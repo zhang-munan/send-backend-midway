@@ -22,8 +22,6 @@ export class AppUserBalanceController extends BaseController {
    */
   @Get('/info', { summary: '余额信息' })
   async info() {
-    return this.ok(
-      await this.userBalanceService.getBalance(this.ctx.user.id)
-    );
+    return this.ok(await this.userBalanceService.getBalance(this.ctx.user.id));
   }
 }

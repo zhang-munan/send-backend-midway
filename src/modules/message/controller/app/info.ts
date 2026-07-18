@@ -1,4 +1,9 @@
-import { CoolController, BaseController, CoolTag, TagTypes } from '@cool-midway/core';
+import {
+  CoolController,
+  BaseController,
+  CoolTag,
+  TagTypes,
+} from '@cool-midway/core';
 import { Body, Get, Inject, Post, Query } from '@midwayjs/core';
 import { MessageInfoEntity } from '../../entity/info';
 import { MessageInfoService } from '../../service/info';
@@ -69,10 +74,7 @@ export class AppMessageInfoController extends BaseController {
   /** 公开广场列表，无需登录 */
   @CoolTag(TagTypes.IGNORE_TOKEN)
   @Get('/publicList', { summary: '广场公开消息列表' })
-  async publicList(
-    @Query('page') page: number = 1,
-    @Query('size') size: number = 10
-  ) {
+  async publicList(@Query('page') page = 1, @Query('size') size = 10) {
     return this.ok(await this.messageInfoService.publicList(page, size));
   }
 

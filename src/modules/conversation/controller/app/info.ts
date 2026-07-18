@@ -18,20 +18,14 @@ export class AppConversationInfoController extends BaseController {
   conversationInfoService: ConversationInfoService;
 
   @Get('/conversationList', { summary: '对话列表' })
-  async conversationList(
-    @Query('page') page: number = 1,
-    @Query('size') size: number = 20
-  ) {
+  async conversationList(@Query('page') page = 1, @Query('size') size = 20) {
     return this.ok(
       await this.conversationInfoService.list(this.ctx.user.id, page, size)
     );
   }
 
   @Get('/:id/messages', { summary: '获取对话消息' })
-  async messages(
-    @Query('page') page: number = 1,
-    @Query('size') size: number = 20
-  ) {
+  async messages(@Query('page') page = 1, @Query('size') size = 20) {
     return this.ok(
       await this.conversationInfoService.getMessages(
         this.ctx.params.id,

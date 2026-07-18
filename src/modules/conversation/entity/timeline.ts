@@ -13,7 +13,11 @@ export class ConversationTimelineEntity extends BaseEntity {
   @Column({ type: 'bigint', comment: '关联消息 ID（发出时）', nullable: true })
   messageId: number;
 
-  @Column({ type: 'bigint', comment: '关联回复 ID（收到回复时）', nullable: true })
+  @Column({
+    type: 'bigint',
+    comment: '关联回复 ID（收到回复时）',
+    nullable: true,
+  })
   replyId: number;
 
   @Column({ type: 'tinyint', comment: '1发出 2收到', dict: ['发出', '收到'] })
@@ -22,7 +26,12 @@ export class ConversationTimelineEntity extends BaseEntity {
   @Column({ type: 'varchar', length: 100, comment: '内容摘要' })
   contentPreview: string;
 
-  @Column({ type: 'bigint', unsigned: true, comment: '发送费用（分）', nullable: true })
+  @Column({
+    type: 'bigint',
+    unsigned: true,
+    comment: '发送费用（分）',
+    nullable: true,
+  })
   feeAmount: number;
 
   @Column({ type: 'tinyint', comment: '计费条数', nullable: true })

@@ -25,10 +25,18 @@ export class UserBalanceService extends BaseService {
         .createQueryBuilder()
         .insert()
         .into(UserBalanceEntity)
-        .values({ userId, balance: 0, messageQuota: 0, totalRecharge: 0, totalConsumed: 0 })
+        .values({
+          userId,
+          balance: 0,
+          messageQuota: 0,
+          totalRecharge: 0,
+          totalConsumed: 0,
+        })
         .orIgnore()
         .execute();
-      record = await this.userBalanceEntity.findOneBy({ userId: Equal(userId) });
+      record = await this.userBalanceEntity.findOneBy({
+        userId: Equal(userId),
+      });
     }
     return record!;
   }

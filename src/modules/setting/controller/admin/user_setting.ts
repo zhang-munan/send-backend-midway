@@ -9,7 +9,12 @@ import { SettingUserEntity } from '../../entity/user_setting';
   entity: SettingUserEntity,
   prefix: '/admin/setting/userSetting',
   pageQueryOp: {
-    fieldEq: ['a.notifySendResult', 'a.notifyReply', 'a.notifyActivity', 'a.defaultAnonymous'],
+    fieldEq: [
+      'a.notifySendResult',
+      'a.notifyReply',
+      'a.notifyActivity',
+      'a.defaultAnonymous',
+    ],
   },
 })
 export class AdminSettingUserController extends BaseController {}

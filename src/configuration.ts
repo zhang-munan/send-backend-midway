@@ -75,7 +75,9 @@ export class MainConfiguration {
   async onReady() {
     // 补种模板分类默认数据（若表为空）
     try {
-      const categoryInit = await this.applicationContext.getAsync(TemplateCategoryInit);
+      const categoryInit = await this.applicationContext.getAsync(
+        TemplateCategoryInit
+      );
       await categoryInit.seed();
     } catch (e) {
       this.logger.warn('[template] category seed failed:', e.message);

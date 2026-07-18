@@ -277,15 +277,20 @@ export class UserLoginService extends BaseService {
     iv: string
   ) {
     const wxPhone = await this.userWxService.miniPhone(code, encryptedData, iv);
-    if (!wxPhone?.phone) throw new CoolCommException('获得手机号失败，请检查配置');
+    if (!wxPhone?.phone)
+      throw new CoolCommException('获得手机号失败，请检查配置');
     return this.bindPhoneToUser(userId, wxPhone.phone);
   }
 
   private async bindPhoneToUser(userId: number, phone: string) {
-    const current: any = await this.userInfoEntity.findOneBy({ id: Equal(userId) });
+    const current: any = await this.userInfoEntity.findOneBy({
+      id: Equal(userId),
+    });
     if (!current) throw new CoolCommException('用户不存在');
 
-    const phoneOwner: any = await this.userInfoEntity.findOneBy({ phone: Equal(phone) });
+    const phoneOwner: any = await this.userInfoEntity.findOneBy({
+      phone: Equal(phone),
+    });
     if (!phoneOwner || phoneOwner.id === current.id) {
       await this.userInfoEntity.update(current.id, { phone });
       return this.token({ id: current.id });

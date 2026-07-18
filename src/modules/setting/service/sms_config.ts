@@ -26,7 +26,8 @@ export class SettingSmsConfigService extends BaseService {
     const fallback = await this.smsConfigEntity.findOne({
       where: { isActive: Equal(1) },
     });
-    if (!fallback) throw new CoolCommException('暂无可用的短信通道，请先配置并启用通道');
+    if (!fallback)
+      throw new CoolCommException('暂无可用的短信通道，请先配置并启用通道');
     return fallback;
   }
 
@@ -43,9 +44,12 @@ export class SettingSmsConfigService extends BaseService {
    * 设置指定通道为主通道（同时取消其他通道的主通道状态）
    */
   async setPrimary(id: number): Promise<void> {
-    const config = await this.smsConfigEntity.findOne({ where: { id: Equal(id) } });
+    const config = await this.smsConfigEntity.findOne({
+      where: { id: Equal(id) },
+    });
     if (!config) throw new CoolCommException('通道不存在');
-    if (!config.isActive) throw new CoolCommException('请先启用该通道再设为主通道');
+    if (!config.isActive)
+      throw new CoolCommException('请先启用该通道再设为主通道');
 
     await this.smsConfigEntity.update({}, { isPrimary: 0 });
     await this.smsConfigEntity.update({ id: Equal(id) }, { isPrimary: 1 });
@@ -55,7 +59,9 @@ export class SettingSmsConfigService extends BaseService {
    * 切换通道启用状态
    */
   async toggleActive(id: number): Promise<{ isActive: number }> {
-    const config = await this.smsConfigEntity.findOne({ where: { id: Equal(id) } });
+    const config = await this.smsConfigEntity.findOne({
+      where: { id: Equal(id) },
+    });
     if (!config) throw new CoolCommException('通道不存在');
 
     const newStatus = config.isActive === 1 ? 0 : 1;

@@ -495,7 +495,10 @@ export class OrderInfoService extends BaseService {
     );
     if (!enough) throw new CoolCommException('余额不足');
 
-    await this.userBalanceService.deductBalance(userId, Number(order.payAmount));
+    await this.userBalanceService.deductBalance(
+      userId,
+      Number(order.payAmount)
+    );
 
     await this.orderInfoEntity.update(order.id, {
       status: ORDER_STATUS.PAID,
@@ -592,9 +595,7 @@ export class OrderInfoService extends BaseService {
       const receiverPhone: string = payParams.receiverPhone;
       const content: string = payParams.content;
       const contentLength = content.length;
-      const smsCount = Number(
-        payParams.smsCount ?? calculateSmsCount(content)
-      );
+      const smsCount = Number(payParams.smsCount ?? calculateSmsCount(content));
       const receiverPhoneMask =
         receiverPhone.substring(0, 3) + '****' + receiverPhone.substring(7);
       const receiverPhoneHash = crypto
@@ -614,7 +615,8 @@ export class OrderInfoService extends BaseService {
         smsCount,
         isAnonymous:
           payParams.isAnonymous !== undefined ? payParams.isAnonymous : 1,
-        isPublic: payParams.isPublic === 1 || payParams.isPublic === true ? 1 : 0,
+        isPublic:
+          payParams.isPublic === 1 || payParams.isPublic === true ? 1 : 0,
         senderSignature: payParams.senderSignature || null,
         sendType: payParams.sendType || 1,
         scheduledAt: payParams.scheduledAt || null,

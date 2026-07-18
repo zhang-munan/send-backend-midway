@@ -34,7 +34,9 @@ export class AppTemplateInfoController extends BaseController {
 
   @Post('/custom', { summary: '保存自定义模板' })
   async saveCustom(@Body() body) {
-    return this.ok(await this.templateInfoService.saveCustom(this.ctx.user.id, body));
+    return this.ok(
+      await this.templateInfoService.saveCustom(this.ctx.user.id, body)
+    );
   }
 
   @Get('/:id', { summary: '模板详情' })
@@ -46,6 +48,8 @@ export class AppTemplateInfoController extends BaseController {
 
   @Post('/:id/collect', { summary: '收藏/取消收藏' })
   async collect(@Param('id') id: number) {
-    return this.ok(await this.templateInfoService.collect(this.ctx.user.id, id));
+    return this.ok(
+      await this.templateInfoService.collect(this.ctx.user.id, id)
+    );
   }
 }

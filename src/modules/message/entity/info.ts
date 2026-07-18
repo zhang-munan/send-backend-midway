@@ -88,9 +88,19 @@ export class MessageInfoEntity extends BaseEntity {
 
   @Column({
     type: 'tinyint',
-    comment: '0待审核 1审核通过 2审核拒绝 3待发送 4发送中 5已送达 6发送失败 7已取消',
+    comment:
+      '0待审核 1审核通过 2审核拒绝 3待发送 4发送中 5已送达 6发送失败 7已取消',
     default: 1,
-    dict: ['待审核', '审核通过', '审核拒绝', '待发送', '发送中', '已送达', '发送失败', '已取消'],
+    dict: [
+      '待审核',
+      '审核通过',
+      '审核拒绝',
+      '待发送',
+      '发送中',
+      '已送达',
+      '发送失败',
+      '已取消',
+    ],
   })
   status: number;
 

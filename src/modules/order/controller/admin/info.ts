@@ -1,4 +1,8 @@
-import { CoolController, BaseController, CoolCommException } from '@cool-midway/core';
+import {
+  CoolController,
+  BaseController,
+  CoolCommException,
+} from '@cool-midway/core';
 import { Body, Inject, Post } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Equal, Repository } from 'typeorm';
@@ -15,11 +19,7 @@ import { ORDER_STATUS } from '../../service/info';
   pageQueryOp: {
     fieldEq: ['a.status', 'a.payMethod'],
     keyWordLikeFields: ['a.orderNo', 'a.productName', 'b.nickName', 'b.phone'],
-    select: [
-      'a.*',
-      'b.nickName as userNickName',
-      'b.phone as userPhone',
-    ],
+    select: ['a.*', 'b.nickName as userNickName', 'b.phone as userPhone'],
     join: [
       {
         entity: UserInfoEntity,

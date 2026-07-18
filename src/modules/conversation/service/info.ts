@@ -22,7 +22,11 @@ export class ConversationInfoService extends BaseService {
    * @param receiverPhoneHash
    * @param receiverPhoneMask
    */
-  async getOrCreate(userId: number, receiverPhoneHash: string, receiverPhoneMask: string) {
+  async getOrCreate(
+    userId: number,
+    receiverPhoneHash: string,
+    receiverPhoneMask: string
+  ) {
     let conversation = await this.conversationInfoEntity.findOneBy({
       userId: Equal(userId),
       receiverPhoneHash,
@@ -49,7 +53,10 @@ export class ConversationInfoService extends BaseService {
    * @param conversationId
    * @param data
    */
-  async addTimelineItem(conversationId: number, data: Partial<ConversationTimelineEntity>) {
+  async addTimelineItem(
+    conversationId: number,
+    data: Partial<ConversationTimelineEntity>
+  ) {
     return await this.conversationTimelineEntity.save({
       conversationId,
       ...data,
@@ -63,7 +70,11 @@ export class ConversationInfoService extends BaseService {
    * @param content
    * @param isReply
    */
-  async updateLastMsg(conversationId: number, content: string, isReply: number) {
+  async updateLastMsg(
+    conversationId: number,
+    content: string,
+    isReply: number
+  ) {
     await this.conversationInfoEntity.update(
       { id: Equal(conversationId) },
       {

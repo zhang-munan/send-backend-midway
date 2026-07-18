@@ -14,7 +14,9 @@ import { UserInfoEntity } from '../../../user/entity/info';
     fieldEq: ['a.status', 'a.isMarked', 'a.isReceiverUnsubscribed'],
     keyWordLikeFields: ['a.receiverPhoneMask'],
     select: ['a.*', 'b.nickName as userName'],
-    join: [{ entity: UserInfoEntity, alias: 'b', condition: 'a.userId = b.id' }],
+    join: [
+      { entity: UserInfoEntity, alias: 'b', condition: 'a.userId = b.id' },
+    ],
   },
 })
 export class AdminConversationInfoController extends BaseController {}

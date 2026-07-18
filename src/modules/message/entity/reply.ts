@@ -17,7 +17,12 @@ export class MessageReplyEntity extends BaseEntity {
   @Column({ type: 'text', comment: '回复内容' })
   replyContent: string;
 
-  @Column({ type: 'varchar', length: 64, comment: '回复者手机号', nullable: true })
+  @Column({
+    type: 'varchar',
+    length: 64,
+    comment: '回复者手机号',
+    nullable: true,
+  })
   replyPhone: string;
 
   @Column({
@@ -30,6 +35,10 @@ export class MessageReplyEntity extends BaseEntity {
   @Column({ type: 'tinyint', comment: '发送方是否已读', default: 0 })
   isRead: number;
 
-  @Column({ type: 'datetime', comment: '收到回复时间', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    type: 'datetime',
+    comment: '收到回复时间',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   receivedAt: Date;
 }

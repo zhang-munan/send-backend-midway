@@ -28,12 +28,7 @@ export class MessageInfoService extends BaseService {
    * @param params 消息参数
    */
   async sendMessage(userId: number, params: any) {
-    const {
-      receiverPhone,
-      content,
-      sendType,
-      scheduledAt,
-    } = params;
+    const { receiverPhone, content, sendType, scheduledAt } = params;
 
     // 验证手机号格式（11位数字）
     if (!receiverPhone || !/^1\d{10}$/.test(receiverPhone)) {
@@ -201,11 +196,7 @@ export class MessageInfoService extends BaseService {
       }),
       this.messageReplyEntity
         .createQueryBuilder('reply')
-        .innerJoin(
-          MessageInfoEntity,
-          'message',
-          'message.id = reply.messageId'
-        )
+        .innerJoin(MessageInfoEntity, 'message', 'message.id = reply.messageId')
         .where('message.userId = :userId', { userId })
         .andWhere('reply.replyType = :replyType', { replyType: 1 })
         .andWhere('reply.receivedAt BETWEEN :start AND :end', { start, end })
