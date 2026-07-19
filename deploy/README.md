@@ -12,20 +12,20 @@
 cd /Users/zhangmunan/project/bangni-shuochukou/backend
 git add .gitignore .dockerignore src/comm/path.ts src/config/config.default.ts src/config/config.prod.ts Dockerfile.production deploy .github pnpm-lock.yaml
 git commit -m "ci: add production deployment"
-git push origin 8.x
+git push -u origin release/0.x
 
 cd /Users/zhangmunan/project/bangni-shuochukou/frontend/admin
 git add .dockerignore Dockerfile.production .github
 git commit -m "ci: add production deployment"
-git push origin 8.x
+git push -u origin release/0.x
 
 cd /Users/zhangmunan/project/bangni-shuochukou/frontend/user-app
 git add .dockerignore Dockerfile.h5 deploy scripts .github config/prod.ts
 git commit -m "ci: add H5 release deployment"
-git push origin feature/home-style
+git push -u origin release/0.x
 ```
 
-三个项目统一使用 `feature/**` 开发、向 `release/**` 提交 Pull Request，并且只允许从 `release/**` 创建生产版本。现有 `8.x` 和 `main` 暂时保留为历史基线，待第一个 release 分支创建并验证后再决定是否修改 GitHub 默认分支。
+三个项目的首个发布分支统一为 `release/0.x`。后续开发从该发布分支创建 `feature/**`，完成后通过 Pull Request 合并回 `release/0.x`；正式版本只能从 `release/**` 构建和发布。现有 `8.x` 和 `main` 暂时保留为历史基线。
 
 `backend/pnpm-lock.yaml` 过去被忽略，本次必须提交；它保证云端每次安装同一批依赖版本。
 
