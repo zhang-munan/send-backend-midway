@@ -1,0 +1,45 @@
+# 此文件部署到服务器 /opt/apps/bangni-shuochukou/compose.yml。
+# 数据库和 Redis 不在这里创建：它们应由现有服务持续管理和备份。
+services:
+  bangni-backend:
+    image: ${BACKEND_IMAGE:?请设置 BACKEND_IMAGE}
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      COOL_DATA_PATH: /app/cool-data
+    expose:
+      - "8001"
+    volumes:
+      - /opt/apps/bangni-shuochukou/uploads:/app/cool-data/upload
+    networks:
+      bangni:
+        aliases:
+          - midway
+          - backend
+      app-net:
+
+  admin:
+    image: ${ADMIN_IMAGE:?请设置 ADMIN_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - bangni-backend
+    ports:
+      - "127.0.0.1:8101:80"
+    networks:
+      - bangni
+
+  h5:
+    image: ${H5_IMAGE:?请设置 H5_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      - bangni-backend
+    ports:
+      - "127.0.0.1:8102:80"
+    networks:
+      - bangni
+
+networks:
+  bangni:
+    name: bangni-production
+  app-net:
+    external: true

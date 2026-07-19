@@ -1,0 +1,54 @@
+# 宿主机 Nginx 的站点配置示例。将域名和证书路径改为你的实际值。
+server {
+    listen 80;
+    server_name example.com www.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name example.com www.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/example.com_bundle.crt;
+    ssl_certificate_key /etc/nginx/ssl/example.com.key;
+
+    # 管理端静态页面；其中 /api 和 /socket 已由管理端容器转发给后端。
+    location / {
+        proxy_pass http://127.0.0.1:8101;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /upload/ {
+        alias /opt/apps/bangni-shuochukou/uploads/;
+    }
+}
+
+# 手机端 H5 使用独立域名。
+server {
+    listen 80;
+    server_name h5.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name h5.example.com;
+
+    ssl_certificate     /etc/nginx/ssl/h5.example.com_bundle.crt;
+    ssl_certificate_key /etc/nginx/ssl/h5.example.com.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:8102;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /upload/ {
+        alias /opt/apps/bangni-shuochukou/uploads/;
+    }
+}

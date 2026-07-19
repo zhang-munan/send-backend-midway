@@ -10,7 +10,8 @@ import { availablePort } from '../comm/port';
 
 export default {
   // 确保每个项目唯一，项目首次启动会自动生成
-  keys: 'ef09eabb-8856-4ee6-9d0e-45148aeae409',
+  // 生产环境必须通过 APP_KEYS 注入随机密钥；本地开发才使用下面的默认值。
+  keys: process.env.APP_KEYS || 'local-development-only-change-me',
   koa: {
     port: availablePort(8001),
   },

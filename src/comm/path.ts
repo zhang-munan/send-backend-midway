@@ -8,10 +8,15 @@ import * as fs from 'fs';
  * @returns
  */
 const getKeys = () => {
+  if (process.env.APP_KEYS) {
+    return process.env.APP_KEYS;
+  }
   const configFile = path.join(__dirname, '../config/config.default.js');
   const configContent = fs.readFileSync(configFile, 'utf8');
-  const keys = configContent.match(/keys: '([^']+)'/)?.[1];
-  return keys;
+  return (
+    configContent.match(/keys: '([^']+)'/)?.[1] ||
+    'local-development-only-change-me'
+  );
 };
 
 /**
@@ -19,6 +24,13 @@ const getKeys = () => {
  * @returns
  */
 export const pDataPath = () => {
+  // 容器中设置 COOL_DATA_PATH 后，可把上传文件稳定挂载到宿主机目录。
+  if (process.env.COOL_DATA_PATH) {
+    if (!fs.existsSync(process.env.COOL_DATA_PATH)) {
+      fs.mkdirSync(process.env.COOL_DATA_PATH, { recursive: true });
+    }
+    return process.env.COOL_DATA_PATH;
+  }
   const dirPath = path.join(os.homedir(), '.cool-admin', md5(getKeys()));
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
