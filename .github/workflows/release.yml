@@ -36,11 +36,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.version || github.ref }}
+      # setup-node 开启 pnpm 缓存前，必须先让 runner 可以执行 pnpm。
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-      - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       # 当前仓库尚无 Jest 可识别的测试文件；补充测试后会自动执行。
