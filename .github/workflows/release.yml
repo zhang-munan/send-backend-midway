@@ -38,8 +38,6 @@ jobs:
           ref: ${{ inputs.version || github.ref }}
       # setup-node 开启 pnpm 缓存前，必须先让 runner 可以执行 pnpm。
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
