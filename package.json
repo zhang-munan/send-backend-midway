@@ -1,9 +1,10 @@
 {
   "name": "cool-admin",
   "version": "8.0.0",
-  "description": "一个很酷的Ai快速开发框架",
-  "private": true,
-  "dependencies": {
+	"description": "一个很酷的Ai快速开发框架",
+	"private": true,
+	"packageManager": "pnpm@9.15.9",
+	"dependencies": {
     "@cool-midway/core": "^8.0.7",
     "@cool-midway/rpc": "^8.0.1",
     "@cool-midway/task": "^8.0.2",
