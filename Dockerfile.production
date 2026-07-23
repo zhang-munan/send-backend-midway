@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # 可重复构建的生产镜像：构建阶段包含开发依赖，运行阶段只保留生产依赖。
 FROM node:22-alpine AS build
 
