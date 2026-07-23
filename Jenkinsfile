@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+        PATH        = '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
         IMAGE_NAME  = 'ghcr.io/zhang-munan/send-backend-midway'
         IMAGE_TAG   = "v${BUILD_NUMBER}"
         SERVER_IP   = '124.222.204.121'
@@ -12,7 +13,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git credentialsId: 'github-token',
+                git credentialsId: 'ghcr-credentials',
                     url: 'https://github.com/zhang-munan/send-backend-midway.git',
                     branch: 'release/0.x'
             }
