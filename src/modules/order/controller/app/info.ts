@@ -77,6 +77,19 @@ export class AppOrderInfoController extends BaseController {
   }
 
   /**
+   * 申请退款
+   */
+  @Post('/applyRefund', { summary: '申请退款' })
+  async applyRefund(
+    @Body('orderId') orderId: number,
+    @Body('reason') reason: string
+  ) {
+    return this.ok(
+      await this.orderInfoService.applyRefund(this.ctx.user.id, orderId, reason)
+    );
+  }
+
+  /**
    * 订单列表
    */
   @Get('/orderList', { summary: '订单列表' })

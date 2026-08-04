@@ -27,6 +27,8 @@ export class AppOrderNotifyController extends BaseController {
   @CoolTag(TagTypes.IGNORE_TOKEN)
   @Post('/wxpay', { summary: '微信支付回调' })
   async wxpay() {
-    return this.ok(await this.orderInfoService.wxpayNotify(this.ctx));
+    // 微信支付要求回调接口直接返回 { code, message }，
+    // 不能再包装成 Cool Admin 的通用响应格式。
+    return await this.orderInfoService.wxpayNotify(this.ctx);
   }
 }

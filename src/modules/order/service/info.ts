@@ -34,6 +34,16 @@ export const ORDER_STATUS = {
   CLOSED: 3,
 };
 
+/** 退款状态 */
+export const REFUND_STATUS = {
+  NONE: 0,
+  PENDING: 1,
+  REFUNDED: 2,
+  REJECTED: 3,
+  PROCESSING: 4,
+  FAILED: 5,
+};
+
 /**
  * 订单信息
  */
@@ -312,7 +322,38 @@ export class OrderInfoService extends BaseService {
       const result = await wxpay.transactions_app({
         ...baseParams,
       });
-      const prepayId = result.prepay_id;
+      const appPayParams = this.unwrapWechatPayResult(result);
+      const normalizedAppPayParams = {
+        appid: appPayParams.appid || appPayParams.appId || config.appid,
+        partnerid:
+          appPayParams.partnerid || appPayParams.partnerId || config.mchid,
+        prepayid: appPayParams.prepayid || appPayParams.prepayId,
+        package: appPayParams.package || 'Sign=WXPay',
+        noncestr: appPayParams.noncestr || appPayParams.nonceStr,
+        timestamp: String(
+          appPayParams.timestamp || appPayParams.timeStamp || ''
+        ),
+        sign: appPayParams.sign || appPayParams.paySign,
+      };
+      if (
+        normalizedAppPayParams.partnerid &&
+        normalizedAppPayParams.prepayid &&
+        normalizedAppPayParams.noncestr &&
+        normalizedAppPayParams.timestamp &&
+        normalizedAppPayParams.sign
+      ) {
+        return {
+          orderId: order.id,
+          orderNo: order.orderNo,
+          payAmount: order.payAmount,
+          tradeType,
+          orderInfo: normalizedAppPayParams,
+        };
+      }
+      const prepayId = appPayParams.prepay_id;
+      if (!prepayId) {
+        throw new CoolCommException('微信APP预支付返回参数不完整');
+      }
       return {
         orderId: order.id,
         orderNo: order.orderNo,
@@ -332,13 +373,18 @@ export class OrderInfoService extends BaseService {
           },
         },
       });
+      const h5PayParams = this.unwrapWechatPayResult(result);
+      const h5Url = h5PayParams.h5_url || h5PayParams.h5Url;
+      if (!h5Url) {
+        throw new CoolCommException('微信H5预支付返回参数不完整');
+      }
       return {
         orderId: order.id,
         orderNo: order.orderNo,
         payAmount: order.payAmount,
         tradeType,
-        h5Url: result.h5_url,
-        mwebUrl: result.h5_url,
+        h5Url,
+        mwebUrl: h5Url,
       };
     }
 
@@ -350,8 +396,30 @@ export class OrderInfoService extends BaseService {
       payer: { openid },
     });
 
-    // 生成小程序调起支付所需签名
-    const packageStr = `prepay_id=${result.prepay_id}`;
+    // wechatpay-node-v3 的 transactions_jsapi 已返回完整且已签名的调起参数。
+    // 不能把它再次当成 { prepay_id } 拼接，否则会生成 prepay_id=undefined，
+    // 微信客户端会误报“调用支付 JSAPI 缺少参数：total_fee”。
+    const jsapiPayParams = this.unwrapWechatPayResult(result);
+    if (this.isValidWechatJsapiParams(jsapiPayParams)) {
+      return {
+        orderId: order.id,
+        orderNo: order.orderNo,
+        payAmount: order.payAmount,
+        tradeType,
+        timeStamp: String(jsapiPayParams.timeStamp),
+        nonceStr: jsapiPayParams.nonceStr,
+        package: jsapiPayParams.package,
+        signType: jsapiPayParams.signType || 'RSA',
+        paySign: jsapiPayParams.paySign,
+      };
+    }
+
+    // 兼容仅返回 prepay_id 的旧版 SDK。
+    const prepayId = jsapiPayParams.prepay_id;
+    if (!prepayId) {
+      throw new CoolCommException('微信JSAPI预支付返回参数不完整');
+    }
+    const packageStr = `prepay_id=${prepayId}`;
     const payParams = await this.createWechatPaySign(
       config,
       plugin,
@@ -366,6 +434,23 @@ export class OrderInfoService extends BaseService {
       ...payParams,
       package: packageStr,
     };
+  }
+
+  private unwrapWechatPayResult(result: any) {
+    if (!result || typeof result !== 'object') return {};
+    return result.data || result.body || result;
+  }
+
+  private isValidWechatJsapiParams(params: any) {
+    return Boolean(
+      params?.timeStamp &&
+        params?.nonceStr &&
+        params?.paySign &&
+        typeof params?.package === 'string' &&
+        /^prepay_id=.+/.test(params.package) &&
+        !params.package.includes('undefined') &&
+        !params.package.includes('null')
+    );
   }
 
   private normalizeWechatTradeType(tradeType?: string) {
@@ -547,7 +632,8 @@ export class OrderInfoService extends BaseService {
       return { code: 'FAIL', message: '签名验证失败' };
     }
 
-    const { out_trade_no, trade_state, transaction_id } = notifyData;
+    const { out_trade_no, trade_state, transaction_id, success_time } =
+      notifyData;
 
     if (trade_state !== 'SUCCESS') {
       // 非成功状态直接返回 200，无需处理
@@ -561,21 +647,116 @@ export class OrderInfoService extends BaseService {
       return { code: 'SUCCESS', message: '订单不存在' };
     }
 
-    // 幂等处理：已支付则直接返回
-    if (order.status === ORDER_STATUS.PAID) {
+    // 幂等处理：非待支付订单直接返回
+    if (order.status !== ORDER_STATUS.PENDING) {
       return { code: 'SUCCESS', message: '已处理' };
     }
 
-    await this.orderInfoEntity.update(order.id, {
-      status: ORDER_STATUS.PAID,
-      payTime: new Date(),
-      tradeNo: transaction_id,
-    });
+    if (!this.isMatchingWechatPayment(order, notifyData)) {
+      ctx.status = 400;
+      return { code: 'FAIL', message: '订单信息校验失败' };
+    }
 
-    // 支付成功后给用户增加配额（如果是购买套餐）并创建消息记录
-    await this.createMessageAfterPaid(order);
+    await this.markOrderPaid(
+      order,
+      transaction_id,
+      this.parseWechatSuccessTime(success_time)
+    );
 
     return { code: 'SUCCESS', message: '处理成功' };
+  }
+
+  /**
+   * 主动查询微信订单状态，补偿因回调延迟或丢失造成的本地待支付订单。
+   */
+  private async reconcileWechatOrder(order: OrderInfoEntity) {
+    if (
+      order.status !== ORDER_STATUS.PENDING ||
+      order.payMethod !== PAY_METHOD.WECHAT
+    ) {
+      return false;
+    }
+
+    try {
+      const plugin: any = await this.pluginService.getInstance('pay-wx');
+      const wxpay = await plugin.getInstance();
+      const result = await wxpay.query({ out_trade_no: order.orderNo });
+      const trade = this.unwrapWechatPayResult(result);
+
+      if (
+        trade?.trade_state !== 'SUCCESS' ||
+        !this.isMatchingWechatPayment(order, trade)
+      ) {
+        return false;
+      }
+
+      return await this.markOrderPaid(
+        order,
+        trade.transaction_id,
+        this.parseWechatSuccessTime(trade.success_time)
+      );
+    } catch (e) {
+      // 查单失败不影响用户查询本地订单，下次轮询继续补偿。
+      return false;
+    }
+  }
+
+  private isMatchingWechatPayment(order: OrderInfoEntity, trade: any) {
+    if (!trade?.transaction_id || trade.out_trade_no !== order.orderNo) {
+      return false;
+    }
+
+    const total = trade.amount?.total;
+    return total !== undefined && Number(total) === Number(order.payAmount);
+  }
+
+  private parseWechatSuccessTime(successTime?: string) {
+    if (!successTime) return new Date();
+    const value = new Date(successTime);
+    return Number.isNaN(value.getTime()) ? new Date() : value;
+  }
+
+  /**
+   * 用状态条件更新保证支付回调与主动查单并发时只入账一次。
+   */
+  private async markOrderPaid(
+    order: OrderInfoEntity,
+    tradeNo: string,
+    payTime = new Date()
+  ) {
+    const result = await this.orderInfoEntity.update(
+      { id: order.id, status: ORDER_STATUS.PENDING },
+      {
+        status: ORDER_STATUS.PAID,
+        payTime,
+        tradeNo,
+      }
+    );
+    if (!result.affected) return false;
+
+    try {
+      await this.createMessageAfterPaid(order);
+    } catch (error) {
+      // 入账失败时恢复待支付，让微信重试回调或前端下次查单继续补偿。
+      await this.orderInfoEntity.update(
+        {
+          id: order.id,
+          status: ORDER_STATUS.PAID,
+          tradeNo,
+        },
+        {
+          status: ORDER_STATUS.PENDING,
+          payTime: null,
+          tradeNo: null,
+        }
+      );
+      throw error;
+    }
+
+    order.status = ORDER_STATUS.PAID;
+    order.payTime = payTime;
+    order.tradeNo = tradeNo;
+    return true;
   }
 
   /**
@@ -695,11 +876,12 @@ export class OrderInfoService extends BaseService {
    * 查询订单状态
    */
   async queryStatus(userId: number, orderId: number) {
-    const order = await this.orderInfoEntity.findOne({
-      where: { id: Equal(orderId), userId: Equal(userId) },
-      select: ['id', 'orderNo', 'status', 'payAmount', 'payTime'],
+    const order = await this.orderInfoEntity.findOneBy({
+      id: Equal(orderId),
+      userId: Equal(userId),
     });
     if (!order) throw new CoolCommException('订单不存在');
+    await this.reconcileWechatOrder(order);
     return order;
   }
 
@@ -716,16 +898,324 @@ export class OrderInfoService extends BaseService {
   }
 
   /**
+   * 用户提交全额退款申请。
+   */
+  async applyRefund(userId: number, orderId: number, reason: string) {
+    const refundReason = (reason || '').trim();
+    if (refundReason.length < 5 || refundReason.length > 200) {
+      throw new CoolCommException('退款原因需填写5-200个字');
+    }
+
+    const order = await this.orderInfoEntity.findOneBy({
+      id: Equal(orderId),
+      userId: Equal(userId),
+    });
+    if (!order) throw new CoolCommException('订单不存在');
+    if (order.status !== ORDER_STATUS.PAID || Number(order.payAmount) <= 0) {
+      throw new CoolCommException('当前订单不可申请退款');
+    }
+    if (
+      ![REFUND_STATUS.NONE, REFUND_STATUS.REJECTED].includes(
+        Number(order.refundStatus || 0)
+      )
+    ) {
+      throw new CoolCommException('该订单已有退款申请，请勿重复提交');
+    }
+
+    const result = await this.orderInfoEntity
+      .createQueryBuilder()
+      .update(OrderInfoEntity)
+      .set({
+        refundStatus: REFUND_STATUS.PENDING,
+        refundReason,
+        refundApplyTime: new Date(),
+        refundAuditTime: null,
+        refundAuditUserId: null,
+        refundRejectReason: null,
+      })
+      .where('id = :id AND userId = :userId AND status = :status', {
+        id: orderId,
+        userId,
+        status: ORDER_STATUS.PAID,
+      })
+      .andWhere('refundStatus IN (:...statuses)', {
+        statuses: [REFUND_STATUS.NONE, REFUND_STATUS.REJECTED],
+      })
+      .execute();
+    if (!result.affected) {
+      throw new CoolCommException('订单状态已变化，请刷新后重试');
+    }
+    return this.orderDetail(userId, orderId);
+  }
+
+  /**
+   * 后台审批退款。拒绝直接结束；通过后按原支付渠道退款。
+   */
+  async auditRefund(
+    orderId: number,
+    approved: boolean,
+    remark: string,
+    adminUserId: number
+  ) {
+    const order = await this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
+    if (!order) throw new CoolCommException('订单不存在');
+    if (order.refundStatus !== REFUND_STATUS.PENDING) {
+      throw new CoolCommException('该退款申请已处理，请刷新后重试');
+    }
+
+    if (!approved) {
+      const rejectReason = (remark || '').trim();
+      if (!rejectReason) throw new CoolCommException('请填写拒绝原因');
+      const result = await this.orderInfoEntity.update(
+        { id: orderId, refundStatus: REFUND_STATUS.PENDING },
+        {
+          refundStatus: REFUND_STATUS.REJECTED,
+          refundAuditTime: new Date(),
+          refundAuditUserId: adminUserId,
+          refundRejectReason: rejectReason.slice(0, 200),
+        }
+      );
+      if (!result.affected) {
+        throw new CoolCommException('该退款申请已被其他管理员处理');
+      }
+      return;
+    }
+
+    await this.ensureRefundBusinessCanSettle(order);
+    const refundNo = order.refundNo || `RF${order.orderNo}`;
+    const claimed = await this.orderInfoEntity.update(
+      { id: orderId, refundStatus: REFUND_STATUS.PENDING },
+      {
+        refundStatus: REFUND_STATUS.PROCESSING,
+        refundAuditTime: new Date(),
+        refundAuditUserId: adminUserId,
+        refundRejectReason: null,
+        refundNo,
+      }
+    );
+    if (!claimed.affected) {
+      throw new CoolCommException('该退款申请已被其他管理员处理');
+    }
+
+    try {
+      if (order.payMethod === PAY_METHOD.WECHAT) {
+        const result = await this.refundByWechat(order, refundNo);
+        if (result?.status === 'SUCCESS') {
+          await this.finishRefund(orderId);
+        }
+      } else if (
+        [PAY_METHOD.BALANCE, PAY_METHOD.MOCK].includes(order.payMethod)
+      ) {
+        await this.finishRefund(orderId);
+      } else {
+        throw new CoolCommException('该支付方式暂不支持自动退款');
+      }
+    } catch (error) {
+      await this.orderInfoEntity.update(
+        { id: orderId, refundStatus: REFUND_STATUS.PROCESSING },
+        {
+          refundStatus: REFUND_STATUS.FAILED,
+          refundRejectReason: this.getRefundErrorMessage(error),
+        }
+      );
+      throw error;
+    }
+  }
+
+  /** 同步微信退款状态，供处理中的退款人工刷新。 */
+  async syncRefund(orderId: number) {
+    const order = await this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
+    if (!order) throw new CoolCommException('订单不存在');
+    if (
+      order.payMethod !== PAY_METHOD.WECHAT ||
+      ![REFUND_STATUS.PROCESSING, REFUND_STATUS.FAILED].includes(
+        order.refundStatus
+      ) ||
+      !order.refundNo
+    ) {
+      throw new CoolCommException('当前订单无需同步退款状态');
+    }
+    const wxpay = await this.getWechatPayInstance();
+    const result = await wxpay.find_refunds(order.refundNo);
+    if (result?.status === 'SUCCESS') {
+      await this.finishRefund(orderId);
+    } else if (['CLOSED', 'ABNORMAL'].includes(result?.status)) {
+      await this.orderInfoEntity.update(orderId, {
+        refundStatus: REFUND_STATUS.FAILED,
+        refundRejectReason:
+          result.status === 'CLOSED' ? '退款已关闭' : '微信退款异常',
+      });
+    } else {
+      await this.orderInfoEntity.update(orderId, {
+        refundStatus: REFUND_STATUS.PROCESSING,
+        refundRejectReason: null,
+      });
+    }
+    return this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
+  }
+
+  /** 使用相同商户退款单号幂等重试失败的微信退款。 */
+  async retryRefund(orderId: number) {
+    const order = await this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
+    if (
+      !order ||
+      order.payMethod !== PAY_METHOD.WECHAT ||
+      order.refundStatus !== REFUND_STATUS.FAILED ||
+      !order.refundNo
+    ) {
+      throw new CoolCommException('当前订单不可重试退款');
+    }
+    const claimed = await this.orderInfoEntity.update(
+      { id: orderId, refundStatus: REFUND_STATUS.FAILED },
+      {
+        refundStatus: REFUND_STATUS.PROCESSING,
+        refundRejectReason: null,
+      }
+    );
+    if (!claimed.affected) {
+      throw new CoolCommException('退款状态已变化，请刷新后重试');
+    }
+    try {
+      const result = await this.refundByWechat(order, order.refundNo);
+      if (result?.status === 'SUCCESS') {
+        await this.finishRefund(orderId);
+      }
+    } catch (error) {
+      await this.orderInfoEntity.update(
+        { id: orderId, refundStatus: REFUND_STATUS.PROCESSING },
+        {
+          refundStatus: REFUND_STATUS.FAILED,
+          refundRejectReason: this.getRefundErrorMessage(error),
+        }
+      );
+      throw error;
+    }
+    return this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
+  }
+
+  private async ensureRefundBusinessCanSettle(order: OrderInfoEntity) {
+    const payParams = this.normalizePayParams(order.payParams);
+    const messageQuota = Number(payParams.messageQuota || 0);
+    if (messageQuota > 0) {
+      const balance = await this.userBalanceService.getBalance(order.userId);
+      if (Number(balance.messageQuota) < messageQuota) {
+        throw new CoolCommException('用户已使用部分套餐条数，暂不能通过退款');
+      }
+    }
+  }
+
+  private async refundByWechat(order: OrderInfoEntity, refundNo: string) {
+    const wxpay = await this.getWechatPayInstance();
+    return wxpay.refunds({
+      out_trade_no: order.orderNo,
+      out_refund_no: refundNo,
+      reason: order.refundReason,
+      amount: {
+        refund: Number(order.payAmount),
+        total: Number(order.payAmount),
+        currency: 'CNY',
+      },
+    });
+  }
+
+  private async getWechatPayInstance() {
+    try {
+      const plugin: any = await this.pluginService.getInstance('pay-wx');
+      return plugin.getInstance();
+    } catch (error) {
+      throw new CoolCommException('微信支付插件未配置，无法发起退款');
+    }
+  }
+
+  private async finishRefund(orderId: number) {
+    await this.orderInfoEntity.manager.transaction(async manager => {
+      const repository = manager.getRepository(OrderInfoEntity);
+      const order = await repository.findOne({
+        where: { id: Equal(orderId) },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!order || order.refundStatus === REFUND_STATUS.REFUNDED) return;
+      if (
+        ![REFUND_STATUS.PROCESSING, REFUND_STATUS.FAILED].includes(
+          order.refundStatus
+        )
+      ) {
+        throw new CoolCommException('退款状态异常，请刷新后重试');
+      }
+
+      const payParams = this.normalizePayParams(order.payParams);
+      const messageQuota = Number(payParams.messageQuota || 0);
+      if (messageQuota > 0) {
+        const result = await manager
+          .createQueryBuilder()
+          .update('user_balance')
+          .set({ messageQuota: () => `messageQuota - ${messageQuota}` })
+          .where('userId = :userId AND messageQuota >= :messageQuota', {
+            userId: order.userId,
+            messageQuota,
+          })
+          .execute();
+        if (!result.affected) {
+          throw new CoolCommException('用户剩余套餐条数不足，退款入账失败');
+        }
+      }
+      if (order.payMethod === PAY_METHOD.BALANCE) {
+        await manager
+          .createQueryBuilder()
+          .update('user_balance')
+          .set({
+            balance: () => `balance + ${Number(order.payAmount)}`,
+            totalConsumed: () =>
+              `GREATEST(totalConsumed - ${Number(order.payAmount)}, 0)`,
+          })
+          .where('userId = :userId', { userId: order.userId })
+          .execute();
+      }
+
+      await repository.update(orderId, {
+        status: ORDER_STATUS.REFUNDED,
+        refundStatus: REFUND_STATUS.REFUNDED,
+        refundAmount: Number(order.payAmount),
+        refundTime: new Date(),
+        refundRejectReason: null,
+      });
+    });
+  }
+
+  private getRefundErrorMessage(error: any) {
+    const message =
+      error?.message || error?.response?.body?.message || '退款请求失败';
+    return String(message).slice(0, 200);
+  }
+
+  /**
    * 订单列表
    */
   async orderList(userId: number, params: any) {
     const { page = 1, size = 10 } = params;
-    const [list, total] = await this.orderInfoEntity.findAndCount({
+    const options = {
       where: { userId: Equal(userId) },
-      order: { createTime: 'DESC' },
+      order: { createTime: 'DESC' as const },
       skip: (page - 1) * size,
       take: size,
-    });
+    };
+    let [list, total] = await this.orderInfoEntity.findAndCount(options);
+
+    // 账单页打开时主动补查当前页最近的微信待支付订单。
+    const pendingWechatOrders = list
+      .filter(
+        order =>
+          order.status === ORDER_STATUS.PENDING &&
+          order.payMethod === PAY_METHOD.WECHAT
+      )
+      .slice(0, 3);
+    const reconciled = await Promise.all(
+      pendingWechatOrders.map(order => this.reconcileWechatOrder(order))
+    );
+    if (reconciled.some(Boolean)) {
+      [list, total] = await this.orderInfoEntity.findAndCount(options);
+    }
+
     return { list, total, page, size };
   }
 }

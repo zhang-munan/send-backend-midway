@@ -8,7 +8,7 @@ import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Equal, Repository } from 'typeorm';
 import { OrderInfoEntity } from '../../entity/info';
 import { UserInfoEntity } from '../../../user/entity/info';
-import { ORDER_STATUS } from '../../service/info';
+import { ORDER_STATUS, OrderInfoService } from '../../service/info';
 
 /**
  * 订单管理-后台
@@ -17,7 +17,7 @@ import { ORDER_STATUS } from '../../service/info';
   api: ['delete', 'info', 'list', 'page'],
   entity: OrderInfoEntity,
   pageQueryOp: {
-    fieldEq: ['a.status', 'a.payMethod'],
+    fieldEq: ['a.status', 'a.payMethod', 'a.refundStatus'],
     keyWordLikeFields: ['a.orderNo', 'a.productName', 'b.nickName', 'b.phone'],
     select: ['a.*', 'b.nickName as userNickName', 'b.phone as userPhone'],
     join: [
@@ -32,6 +32,12 @@ import { ORDER_STATUS } from '../../service/info';
   },
 })
 export class AdminOrderInfoController extends BaseController {
+  @Inject()
+  ctx;
+
+  @Inject()
+  orderInfoService: OrderInfoService;
+
   @InjectEntityModel(OrderInfoEntity)
   orderInfoEntity: Repository<OrderInfoEntity>;
 
@@ -47,5 +53,39 @@ export class AdminOrderInfoController extends BaseController {
     }
     await this.orderInfoEntity.update(id, { status: ORDER_STATUS.CLOSED });
     return this.ok();
+  }
+
+  /**
+   * 审批退款申请
+   */
+  @Post('/refundAudit', { summary: '审批退款申请' })
+  async refundAudit(
+    @Body('id') id: number,
+    @Body('approved') approved: boolean,
+    @Body('remark') remark: string
+  ) {
+    await this.orderInfoService.auditRefund(
+      id,
+      approved,
+      remark,
+      this.ctx.admin.userId
+    );
+    return this.ok();
+  }
+
+  /**
+   * 同步第三方退款结果
+   */
+  @Post('/syncRefund', { summary: '同步退款状态' })
+  async syncRefund(@Body('id') id: number) {
+    return this.ok(await this.orderInfoService.syncRefund(id));
+  }
+
+  /**
+   * 重试失败的微信退款
+   */
+  @Post('/retryRefund', { summary: '重试微信退款' })
+  async retryRefund(@Body('id') id: number) {
+    return this.ok(await this.orderInfoService.retryRefund(id));
   }
 }

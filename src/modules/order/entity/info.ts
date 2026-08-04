@@ -101,6 +101,41 @@ export class OrderInfoEntity extends BaseEntity {
   })
   refundReason: string;
 
+  @Index()
+  @Column({
+    type: 'tinyint',
+    comment: '退款状态：0未申请 1待审批 2已退款 3已拒绝 4退款处理中 5退款失败',
+    default: 0,
+    dict: ['未申请', '待审批', '已退款', '已拒绝', '退款处理中', '退款失败'],
+  })
+  refundStatus: number;
+
+  @Column({ type: 'datetime', comment: '退款申请时间', nullable: true })
+  refundApplyTime: Date;
+
+  @Column({ type: 'datetime', comment: '退款审批时间', nullable: true })
+  refundAuditTime: Date;
+
+  @Column({ type: 'bigint', comment: '退款审批人ID', nullable: true })
+  refundAuditUserId: number;
+
+  @Column({
+    type: 'varchar',
+    length: 200,
+    comment: '退款拒绝或失败原因',
+    nullable: true,
+  })
+  refundRejectReason: string;
+
+  @Index({ unique: true })
+  @Column({
+    type: 'varchar',
+    length: 64,
+    comment: '商户退款单号',
+    nullable: true,
+  })
+  refundNo: string;
+
   @Column({
     type: 'varchar',
     length: 45,
