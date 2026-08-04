@@ -1013,7 +1013,8 @@ export class OrderInfoService extends BaseService {
     try {
       if (order.payMethod === PAY_METHOD.WECHAT) {
         const result = await this.refundByWechat(order, refundNo);
-        if (result?.status === 'SUCCESS') {
+        const refund = this.unwrapWechatPayResult(result);
+        if (refund?.status === 'SUCCESS') {
           await this.finishRefund(orderId);
         }
       } else if (
@@ -1050,13 +1051,14 @@ export class OrderInfoService extends BaseService {
     }
     const wxpay = await this.getWechatPayInstance();
     const result = await wxpay.find_refunds(order.refundNo);
-    if (result?.status === 'SUCCESS') {
+    const refund = this.unwrapWechatPayResult(result);
+    if (refund?.status === 'SUCCESS') {
       await this.finishRefund(orderId);
-    } else if (['CLOSED', 'ABNORMAL'].includes(result?.status)) {
+    } else if (['CLOSED', 'ABNORMAL'].includes(refund?.status)) {
       await this.orderInfoEntity.update(orderId, {
         refundStatus: REFUND_STATUS.FAILED,
         refundRejectReason:
-          result.status === 'CLOSED' ? '退款已关闭' : '微信退款异常',
+          refund.status === 'CLOSED' ? '退款已关闭' : '微信退款异常',
       });
     } else {
       await this.orderInfoEntity.update(orderId, {
@@ -1112,7 +1114,8 @@ export class OrderInfoService extends BaseService {
     }
     try {
       const result = await this.refundByWechat(order, order.refundNo);
-      if (result?.status === 'SUCCESS') {
+      const refund = this.unwrapWechatPayResult(result);
+      if (refund?.status === 'SUCCESS') {
         await this.finishRefund(orderId);
       }
     } catch (error) {

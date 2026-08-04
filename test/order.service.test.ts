@@ -140,6 +140,40 @@ describe('订单退款流程', () => {
     expect(reconcile).toHaveBeenCalledWith(processingOrder);
     expect(findOneBy).toHaveBeenCalledTimes(2);
   });
+
+  it('能识别 SDK data 层中的微信退款成功状态', async () => {
+    const service = new OrderInfoService();
+    const order = {
+      id: 1,
+      payMethod: PAY_METHOD.WECHAT,
+      refundStatus: REFUND_STATUS.PROCESSING,
+      refundNo: 'RFBNSC2026080400001',
+    };
+    service.orderInfoEntity = {
+      findOneBy: jest
+        .fn()
+        .mockResolvedValueOnce(order)
+        .mockResolvedValueOnce({
+          ...order,
+          status: ORDER_STATUS.REFUNDED,
+          refundStatus: REFUND_STATUS.REFUNDED,
+        }),
+      update: jest.fn(),
+    } as any;
+    jest.spyOn(service as any, 'getWechatPayInstance').mockResolvedValue({
+      find_refunds: jest.fn(async () => ({
+        status: 200,
+        data: { status: 'SUCCESS' },
+      })),
+    });
+    const finishRefund = jest
+      .spyOn(service as any, 'finishRefund')
+      .mockResolvedValue(undefined);
+
+    await service.syncRefund(1);
+
+    expect(finishRefund).toHaveBeenCalledWith(1);
+  });
 });
 
 describe('微信JSAPI支付参数', () => {
