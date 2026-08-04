@@ -876,12 +876,18 @@ export class OrderInfoService extends BaseService {
    * 查询订单状态
    */
   async queryStatus(userId: number, orderId: number) {
-    const order = await this.orderInfoEntity.findOneBy({
+    let order = await this.orderInfoEntity.findOneBy({
       id: Equal(orderId),
       userId: Equal(userId),
     });
     if (!order) throw new CoolCommException('订单不存在');
-    await this.reconcileWechatOrder(order);
+    const reconciled = await this.reconcileWechatOrder(order);
+    if (reconciled) {
+      order = await this.orderInfoEntity.findOneBy({
+        id: Equal(orderId),
+        userId: Equal(userId),
+      });
+    }
     return order;
   }
 
@@ -889,11 +895,18 @@ export class OrderInfoService extends BaseService {
    * 订单详情
    */
   async orderDetail(userId: number, orderId: number) {
-    const order = await this.orderInfoEntity.findOneBy({
+    let order = await this.orderInfoEntity.findOneBy({
       id: Equal(orderId),
       userId: Equal(userId),
     });
     if (!order) throw new CoolCommException('订单不存在');
+    const reconciled = await this.reconcileWechatRefund(order);
+    if (reconciled) {
+      order = await this.orderInfoEntity.findOneBy({
+        id: Equal(orderId),
+        userId: Equal(userId),
+      });
+    }
     return order;
   }
 
@@ -1054,6 +1067,28 @@ export class OrderInfoService extends BaseService {
     return this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
   }
 
+  /**
+   * 用户查询订单时主动补查微信退款。
+   * 退款通常是异步完成的，补查可避免通知延迟或丢失后本地状态永久停在“处理中”。
+   */
+  private async reconcileWechatRefund(order: OrderInfoEntity) {
+    if (
+      order.payMethod !== PAY_METHOD.WECHAT ||
+      order.refundStatus !== REFUND_STATUS.PROCESSING ||
+      !order.refundNo
+    ) {
+      return false;
+    }
+
+    try {
+      await this.syncRefund(order.id);
+      return true;
+    } catch (e) {
+      // 补查失败不影响用户查询本地订单，下次刷新继续尝试。
+      return false;
+    }
+  }
+
   /** 使用相同商户退款单号幂等重试失败的微信退款。 */
   async retryRefund(orderId: number) {
     const order = await this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
@@ -1209,10 +1244,24 @@ export class OrderInfoService extends BaseService {
           order.payMethod === PAY_METHOD.WECHAT
       )
       .slice(0, 3);
-    const reconciled = await Promise.all(
+    const paymentReconciled = await Promise.all(
       pendingWechatOrders.map(order => this.reconcileWechatOrder(order))
     );
-    if (reconciled.some(Boolean)) {
+
+    // 退款异步到账后主动补查，避免用户端长期显示“退款处理中”。
+    const processingWechatRefunds = list
+      .filter(
+        order =>
+          order.payMethod === PAY_METHOD.WECHAT &&
+          order.refundStatus === REFUND_STATUS.PROCESSING &&
+          Boolean(order.refundNo)
+      )
+      .slice(0, 3);
+    const refundReconciled = await Promise.all(
+      processingWechatRefunds.map(order => this.reconcileWechatRefund(order))
+    );
+
+    if (paymentReconciled.some(Boolean) || refundReconciled.some(Boolean)) {
       [list, total] = await this.orderInfoEntity.findAndCount(options);
     }
 

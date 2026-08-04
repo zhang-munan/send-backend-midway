@@ -109,6 +109,37 @@ describe('订单退款流程', () => {
       })
     );
   });
+
+  it('用户查看订单详情时会补查处理中的微信退款', async () => {
+    const service = new OrderInfoService();
+    const processingOrder = {
+      id: 1,
+      userId: 12,
+      payMethod: PAY_METHOD.WECHAT,
+      refundStatus: REFUND_STATUS.PROCESSING,
+      refundNo: 'RFBNSC2026080400001',
+    };
+    const refundedOrder = {
+      ...processingOrder,
+      status: ORDER_STATUS.REFUNDED,
+      refundStatus: REFUND_STATUS.REFUNDED,
+    };
+    const findOneBy = jest
+      .fn()
+      .mockResolvedValueOnce(processingOrder)
+      .mockResolvedValueOnce(refundedOrder);
+    service.orderInfoEntity = { findOneBy } as any;
+    const reconcile = jest
+      .spyOn(service as any, 'reconcileWechatRefund')
+      .mockResolvedValue(true);
+
+    await expect(service.orderDetail(12, 1)).resolves.toMatchObject({
+      status: ORDER_STATUS.REFUNDED,
+      refundStatus: REFUND_STATUS.REFUNDED,
+    });
+    expect(reconcile).toHaveBeenCalledWith(processingOrder);
+    expect(findOneBy).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('微信JSAPI支付参数', () => {
