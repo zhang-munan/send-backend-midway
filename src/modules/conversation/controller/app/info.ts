@@ -28,6 +28,7 @@ export class AppConversationInfoController extends BaseController {
   async messages(@Query('page') page = 1, @Query('size') size = 20) {
     return this.ok(
       await this.conversationInfoService.getMessages(
+        this.ctx.user.id,
         this.ctx.params.id,
         page,
         size
@@ -37,7 +38,10 @@ export class AppConversationInfoController extends BaseController {
 
   @Post('/:id/read', { summary: '标记已读' })
   async read() {
-    await this.conversationInfoService.markRead(this.ctx.params.id);
+    await this.conversationInfoService.markRead(
+      this.ctx.user.id,
+      this.ctx.params.id
+    );
     return this.ok();
   }
 
@@ -47,6 +51,7 @@ export class AppConversationInfoController extends BaseController {
     @Body('markType') markType: string
   ) {
     await this.conversationInfoService.mark(
+      this.ctx.user.id,
       this.ctx.params.id,
       isMarked,
       markType
