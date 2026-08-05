@@ -27,6 +27,11 @@ export class ConversationInfoService extends BaseService {
     return crypto.createHash('sha256').update(user.phone).digest('hex');
   }
 
+  /** MySQL bigint 可能由驱动返回 string，身份判断时统一按字符串比较。 */
+  private isSameUserId(left: number | string, right: number | string) {
+    return String(left) === String(right);
+  }
+
   /**
    * 当前用户既可以访问自己发起的会话，也可以访问发往其绑定手机号的会话。
    */
@@ -49,7 +54,9 @@ export class ConversationInfoService extends BaseService {
     if (!conversation) throw new CoolCommException('对话不存在');
     return {
       conversation,
-      viewerRole: conversation.userId === userId ? 'sender' : 'receiver',
+      viewerRole: this.isSameUserId(conversation.userId, userId)
+        ? 'sender'
+        : 'receiver',
     } as const;
   }
 
@@ -246,8 +253,9 @@ export class ConversationInfoService extends BaseService {
     });
     return {
       list: list.map(conversation => {
-        const viewerRole =
-          conversation.userId === userId ? 'sender' : 'receiver';
+        const viewerRole = this.isSameUserId(conversation.userId, userId)
+          ? 'sender'
+          : 'receiver';
         return {
           ...conversation,
           viewerRole,

@@ -14,7 +14,8 @@ describe('消息页会话查询', () => {
         [
           {
             id: 1,
-            userId: 10,
+            // MySQL bigint 在真实环境可能返回字符串。
+            userId: '10',
             receiverPhoneMask: '139****0000',
             unreadCount: 2,
           },
@@ -53,6 +54,29 @@ describe('消息页会话查询', () => {
         unreadCount: 0,
       }),
     ]);
+  });
+
+  it('详情查询能将 bigint 字符串 userId 正确识别为发送方', async () => {
+    const service = new ConversationInfoService();
+    service.userInfoEntity = {
+      findOneBy: jest.fn(async () => ({ id: 10, phone })),
+    } as any;
+    service.conversationInfoEntity = {
+      findOne: jest.fn(async () => ({ id: 1, userId: '10' })),
+    } as any;
+    service.conversationTimelineEntity = {
+      findAndCount: jest.fn(async () => [
+        [{ id: 3, direction: 1, contentPreview: '我发出的消息' }],
+        1,
+      ]),
+    } as any;
+
+    const result = await service.getMessages(10, 1, 1, 20);
+
+    expect(result.list[0]).toMatchObject({
+      direction: 1,
+      contentPreview: '我发出的消息',
+    });
   });
 
   it('收件人查看详情时反转消息方向并隐藏发送费用', async () => {
