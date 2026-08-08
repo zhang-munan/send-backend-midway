@@ -7,6 +7,7 @@ import { MessageInfoEntity } from '../entity/info';
 import { MessageReplyEntity } from '../entity/reply';
 import { OrderInfoService } from '../../order/service/info';
 import { calculateSmsFee } from './pricing';
+import { MessageBlacklistService } from './blacklist';
 
 /**
  * 消息信息
@@ -21,6 +22,9 @@ export class MessageInfoService extends BaseService {
 
   @Inject()
   orderInfoService: OrderInfoService;
+
+  @Inject()
+  messageBlacklistService: MessageBlacklistService;
 
   /**
    * 使用套餐配额发送消息，并生成对应的套餐余额订单。
@@ -87,6 +91,10 @@ export class MessageInfoService extends BaseService {
     if (message.status !== 6) {
       throw new CoolCommException('仅发送失败的消息可重新发送');
     }
+    await this.messageBlacklistService.assertCanSend(
+      userId,
+      message.receiverPhone
+    );
     message.status = 3; // 待发送
     message.retryCount = (message.retryCount || 0) + 1;
     message.failReason = null;
@@ -100,6 +108,7 @@ export class MessageInfoService extends BaseService {
    * @param receiverPhone 收件人手机号
    */
   async checkQuota(userId: number, receiverPhone: string) {
+    await this.messageBlacklistService.assertCanSend(userId, receiverPhone);
     const receiverPhoneHash = crypto
       .createHash('sha256')
       .update(receiverPhone)
@@ -257,6 +266,10 @@ export class MessageInfoService extends BaseService {
 
     // 审核通过后，立即发送状态设为待发送
     if (auditStatus === 1) {
+      await this.messageBlacklistService.assertCanSend(
+        message.userId,
+        message.receiverPhone
+      );
       message.status = 1; // 审核通过
       // 如果是立即发送，直接设为待发送
       if (message.sendType === 1) {

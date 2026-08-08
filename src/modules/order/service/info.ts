@@ -16,6 +16,7 @@ import {
   calculateSmsCount,
   calculateSmsFee,
 } from '../../message/service/pricing';
+import { MessageBlacklistService } from '../../message/service/blacklist';
 
 /** 支付方式 */
 export const PAY_METHOD = {
@@ -76,6 +77,9 @@ export class OrderInfoService extends BaseService {
   @Inject()
   conversationInfoService: ConversationInfoService;
 
+  @Inject()
+  messageBlacklistService: MessageBlacklistService;
+
   /**
    * 创建订单
    * @param userId 用户ID
@@ -98,6 +102,10 @@ export class OrderInfoService extends BaseService {
       conversationId,
       senderSignature,
     } = params;
+
+    if (receiverPhone) {
+      await this.messageBlacklistService.assertCanSend(userId, receiverPhone);
+    }
 
     // 获取商品信息
     let product: ProductInfoEntity;
@@ -190,6 +198,14 @@ export class OrderInfoService extends BaseService {
       throw new CoolCommException('订单状态不可支付');
     }
 
+    const payParams = this.normalizePayParams(order.payParams);
+    if (payParams.receiverPhone) {
+      await this.messageBlacklistService.assertCanSend(
+        userId,
+        payParams.receiverPhone
+      );
+    }
+
     if (payMethod === PAY_METHOD.WECHAT) {
       await this.orderInfoEntity.update(order.id, { payMethod });
       return this.payByWechat(order, userId, ctx, params);
@@ -241,6 +257,10 @@ export class OrderInfoService extends BaseService {
    * 使用套餐消息配额发送，并同步生成一笔已支付的套餐余额订单。
    */
   async sendByPackageBalance(userId: number, params: any) {
+    await this.messageBlacklistService.assertCanSend(
+      userId,
+      params.receiverPhone
+    );
     const quotaToDeduct = 1;
     const balance = await this.userBalanceService.getBalance(userId);
     if (balance.messageQuota < quotaToDeduct) {
@@ -783,6 +803,13 @@ export class OrderInfoService extends BaseService {
         .createHash('sha256')
         .update(receiverPhone)
         .digest('hex');
+      // 覆盖“发起支付后、支付到账前”才发生拉黑的竞态。付款记录保留，
+      // 但消息直接进入已取消状态，确保永远不会进入真实短信发送队列。
+      const blockedAfterPayment =
+        await this.messageBlacklistService.isSenderBlocked(
+          order.userId,
+          receiverPhone
+        );
 
       const message = this.messageInfoEntity.create({
         userId: order.userId,
@@ -801,13 +828,16 @@ export class OrderInfoService extends BaseService {
         senderSignature: payParams.senderSignature || null,
         sendType: payParams.sendType || 1,
         scheduledAt: payParams.scheduledAt || null,
-        status: 1, // 审核通过
+        status: blockedAfterPayment ? 7 : 1,
         auditStatus: 1,
         auditedAt: new Date(),
         feeAmount: Number(payParams.feeAmount ?? order.payAmount),
         payType: this.getMessagePayType(order.payMethod),
         retryCount: 0,
         isFreeRetry: 0,
+        failReason: blockedAfterPayment
+          ? '支付期间收件人已拉黑发送者，系统自动取消'
+          : null,
       });
       const savedMessage = await this.messageInfoEntity.save(message);
       await this.createConversationTimeline(
@@ -815,6 +845,29 @@ export class OrderInfoService extends BaseService {
         receiverPhoneHash,
         receiverPhoneMask
       );
+
+      if (blockedAfterPayment) {
+        if (order.payMethod === PAY_METHOD.PACKAGE_BALANCE) {
+          // 套餐发送在极小竞态窗口被拉黑时，原子扣掉的条数立即返还。
+          await this.userBalanceService.addQuota(order.userId, smsCount);
+          await this.orderInfoEntity.update(order.id, {
+            status: ORDER_STATUS.REFUNDED,
+            refundStatus: REFUND_STATUS.REFUNDED,
+            refundAmount: 0,
+            refundReason: '支付期间收件人已拉黑发送者，套餐条数已退回',
+            refundApplyTime: new Date(),
+            refundTime: new Date(),
+          });
+        } else if (Number(order.payAmount) > 0) {
+          // 第三方支付可能已经成功，不能把本地订单回滚为待支付；进入退款审批队列，
+          // 防止重复入账，同时让运营人员能处理原路退款。
+          await this.orderInfoEntity.update(order.id, {
+            refundStatus: REFUND_STATUS.PENDING,
+            refundReason: '支付期间收件人已拉黑发送者，短信未发送',
+            refundApplyTime: new Date(),
+          });
+        }
+      }
     }
   }
 

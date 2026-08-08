@@ -30,6 +30,9 @@ describe('短信套餐余额订单', () => {
       getBalance: jest.fn(async () => ({ messageQuota: 1 })),
       deductQuota,
     } as any;
+    service.messageBlacklistService = {
+      assertCanSend: jest.fn(),
+    } as any;
     jest
       .spyOn(service as any, 'generateOrderNo')
       .mockResolvedValue('BNSC2026071600001');

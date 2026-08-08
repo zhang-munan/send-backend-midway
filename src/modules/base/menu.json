@@ -943,6 +943,43 @@
                         "childMenus": []
                     }
                 ]
+            },
+            {
+                "name": "拉黑管理",
+                "router": "/message/blacklist",
+                "perms": null,
+                "type": 1,
+                "icon": "icon-user",
+                "orderNum": 2,
+                "viewPath": "modules/message/views/blacklist.vue",
+                "keepAlive": true,
+                "isShow": true,
+                "childMenus": [
+                    {
+                        "name": "查询",
+                        "router": null,
+                        "perms": "message:blacklist:page,message:blacklist:info",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 1,
+                        "viewPath": null,
+                        "keepAlive": false,
+                        "isShow": true,
+                        "childMenus": []
+                    },
+                    {
+                        "name": "解除拉黑",
+                        "router": null,
+                        "perms": "message:blacklist:unblock",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 2,
+                        "viewPath": null,
+                        "keepAlive": false,
+                        "isShow": true,
+                        "childMenus": []
+                    }
+                ]
             }
         ]
     },
