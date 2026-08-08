@@ -12,6 +12,7 @@ import { BaseSysUserEntity } from '../../entity/sys/user';
 import { BaseSysLoginService } from '../../service/sys/login';
 import { BaseSysPermsService } from '../../service/sys/perms';
 import { BaseSysUserService } from '../../service/sys/user';
+import { BaseDashboardService } from '../../service/dashboard';
 
 /**
  * Base 通用接口 一般写不需要权限过滤的接口
@@ -34,6 +35,29 @@ export class BaseCommController extends BaseController {
 
   @Inject()
   pluginService: PluginService;
+
+  @Inject()
+  baseDashboardService: BaseDashboardService;
+
+  /**
+   * PC 管理端首页统计汇总
+   */
+  @Get('/dashboard', { summary: '首页统计汇总' })
+  async dashboard() {
+    return this.ok(await this.baseDashboardService.summary());
+  }
+
+  /**
+   * PC 管理端首页业务排行
+   */
+  @Get('/dashboardRanking', { summary: '首页业务排行' })
+  async dashboardRanking() {
+    return this.ok(
+      await this.baseDashboardService.ranking(
+        String(this.ctx.query?.range || 'day')
+      )
+    );
+  }
 
   /**
    * 获得个人信息
