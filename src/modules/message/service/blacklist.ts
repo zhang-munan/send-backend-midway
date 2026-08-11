@@ -8,7 +8,6 @@ import { UserInfoEntity } from '../../user/entity/info';
 import { MessageBlacklistEntity } from '../entity/blacklist';
 import { MessageInfoEntity } from '../entity/info';
 
-export const BLACKLIST_MIN_DELIVERED_MESSAGES = 6;
 export const BLACKLIST_BLOCKED_MESSAGE = '对方已将你拉黑，无法继续发送短信';
 
 /** 短信拉黑业务服务。 */
@@ -58,7 +57,10 @@ export class MessageBlacklistService extends BaseService {
   }
 
   /** 校验当前用户确实是该会话收件人，避免越权拉黑。 */
-  private async getReceiverConversation(userId: number, conversationId: number) {
+  private async getReceiverConversation(
+    userId: number,
+    conversationId: number
+  ) {
     const user = await this.userInfoEntity.findOneBy({
       id: Equal(userId),
       status: Equal(1),
@@ -99,11 +101,12 @@ export class MessageBlacklistService extends BaseService {
       }),
     ]);
     return {
-      canBlock: deliveredMessageCount >= BLACKLIST_MIN_DELIVERED_MESSAGES,
+      // 收件人可以随时拉黑发送者；保留字段以兼容旧版客户端。
+      canBlock: true,
       isBlocked: Boolean(active),
       blacklistId: active?.id || null,
       deliveredMessageCount,
-      requiredMessageCount: BLACKLIST_MIN_DELIVERED_MESSAGES,
+      requiredMessageCount: 0,
     };
   }
 
@@ -114,11 +117,6 @@ export class MessageBlacklistService extends BaseService {
       conversationId
     );
     const deliveredMessageCount = await this.deliveredCount(conversation.id);
-    if (deliveredMessageCount < BLACKLIST_MIN_DELIVERED_MESSAGES) {
-      throw new CoolCommException(
-        `收到同一发送者至少${BLACKLIST_MIN_DELIVERED_MESSAGES}条消息后才可拉黑`
-      );
-    }
 
     const now = new Date();
     const existing = await this.blacklistEntity.findOneBy({

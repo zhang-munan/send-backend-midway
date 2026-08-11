@@ -27,8 +27,8 @@ describe('短信发送者拉黑', () => {
     return service;
   }
 
-  it('第6条成功送达后允许收件人拉黑并取消待发消息', async () => {
-    const service = createService(6);
+  it('允许收件人拉黑并取消待发消息', async () => {
+    const service = createService(1);
 
     await expect(service.block(20, 30)).resolves.toMatchObject({
       id: 40,
@@ -42,10 +42,20 @@ describe('短信发送者拉黑', () => {
     );
   });
 
-  it('仅收到5条时不允许拉黑', async () => {
-    const service = createService(5);
-    await expect(service.block(20, 30)).rejects.toThrow('至少6条');
-    expect(service.blacklistEntity.save).not.toHaveBeenCalled();
+  it('不受已送达消息数量限制', async () => {
+    const service = createService(0);
+
+    await expect(service.block(20, 30)).resolves.toMatchObject({
+      id: 40,
+      deliveredMessageCount: 0,
+      status: 1,
+    });
+
+    await expect(service.conversationState(20, 30)).resolves.toMatchObject({
+      canBlock: true,
+      deliveredMessageCount: 0,
+      requiredMessageCount: 0,
+    });
   });
 
   it('发送前发现有效拉黑关系时返回明确提示', async () => {
