@@ -2,7 +2,6 @@ import { BaseService, CoolCommException } from '@cool-midway/core';
 import { Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Equal, In, Repository } from 'typeorm';
-import * as crypto from 'crypto';
 import { ConversationInfoEntity } from '../../conversation/entity/info';
 import { UserInfoEntity } from '../../user/entity/info';
 import { MessageBlacklistEntity } from '../entity/blacklist';
@@ -24,10 +23,6 @@ export class MessageBlacklistService extends BaseService {
 
   @InjectEntityModel(UserInfoEntity)
   userInfoEntity: Repository<UserInfoEntity>;
-
-  private phoneHash(phone: string) {
-    return crypto.createHash('sha256').update(phone).digest('hex');
-  }
 
   private sameId(left: number | string, right: number | string) {
     return String(left) === String(right);
@@ -68,7 +63,7 @@ export class MessageBlacklistService extends BaseService {
     if (!user?.phone) throw new CoolCommException('请先绑定手机号');
     const conversation = await this.conversationInfoEntity.findOneBy({
       id: Equal(conversationId),
-      receiverPhoneHash: Equal(this.phoneHash(user.phone)),
+      receiverPhone: Equal(user.phone),
       status: Equal(1),
     });
     if (!conversation || this.sameId(conversation.userId, userId)) {
@@ -154,7 +149,7 @@ export class MessageBlacklistService extends BaseService {
     await this.messageInfoEntity.update(
       {
         userId: Equal(conversation.userId),
-        receiverPhoneHash: Equal(conversation.receiverPhoneHash),
+        receiverPhone: Equal(conversation.receiverPhone),
         status: In([0, 1, 3]),
       },
       { status: 7, failReason: '收件人已拉黑发送者，系统自动取消' }

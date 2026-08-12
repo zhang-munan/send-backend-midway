@@ -11,8 +11,8 @@ export class ConversationInfoEntity extends BaseEntity {
   userId: number;
 
   @Index()
-  @Column({ type: 'varchar', length: 64, comment: '收件人手机号哈希' })
-  receiverPhoneHash: string;
+  @Column({ type: 'varchar', length: 20, comment: '收件人手机号' })
+  receiverPhone: string;
 
   @Column({ type: 'varchar', length: 20, comment: '收件人脱敏号码' })
   receiverPhoneMask: string;

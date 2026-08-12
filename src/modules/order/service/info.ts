@@ -86,6 +86,13 @@ export class OrderInfoService extends BaseService {
    * @param params 订单参数
    */
   async createOrder(userId: number, params: any) {
+    const sendParams =
+      params.conversationId && !params.productId
+        ? await this.conversationInfoService.prepareConversationSend(
+            userId,
+            params
+          )
+        : params;
     const {
       productId,
       quantity = 1,
@@ -101,7 +108,8 @@ export class OrderInfoService extends BaseService {
       templateId,
       conversationId,
       senderSignature,
-    } = params;
+      isConversationReply,
+    } = sendParams;
 
     if (receiverPhone) {
       await this.messageBlacklistService.assertCanSend(userId, receiverPhone);
@@ -144,15 +152,22 @@ export class OrderInfoService extends BaseService {
 
     // 消息参数存入 payParams
     const messageParams = {
-      receiverPhone,
+      // 回复匿名来信时，订单响应和支付参数均不携带对方真实手机号。
+      // 支付完成后再通过 conversationId 在服务端重新解析。
+      receiverPhone: isConversationReply ? undefined : receiverPhone,
       content,
-      isAnonymous: isAnonymous !== undefined ? isAnonymous : 1,
+      isAnonymous: isConversationReply
+        ? 0
+        : isAnonymous !== undefined
+        ? isAnonymous
+        : 1,
       isPublic: isPublic === 1 || isPublic === true ? 1 : 0,
       sendType: sendType || 1,
       scheduledAt: scheduledAt || null,
       templateId: templateId || null,
       conversationId: conversationId || null,
       senderSignature: senderSignature || null,
+      isConversationReply: isConversationReply === true,
       messageQuota,
     };
 
@@ -286,6 +301,11 @@ export class OrderInfoService extends BaseService {
         tradeNo: `PACKAGE_BALANCE_${orderNo}`,
         payParams: {
           ...params,
+          // 与按次支付一致，回复目标号码不落入会返回客户端的订单参数。
+          receiverPhone: params.isConversationReply
+            ? undefined
+            : params.receiverPhone,
+          isAnonymous: params.isConversationReply ? 0 : params.isAnonymous,
           messageQuota: 0,
           smsCount: quotaToDeduct,
           feeAmount: 0,
@@ -783,12 +803,19 @@ export class OrderInfoService extends BaseService {
    * 支付成功后处理：增加配额 + 创建消息记录
    */
   private async createMessageAfterPaid(order: OrderInfoEntity) {
-    const payParams = this.normalizePayParams(order.payParams);
+    let payParams = this.normalizePayParams(order.payParams);
     const messageQuota: number = payParams.messageQuota || 0;
 
     // 增加用户消息配额（购买套餐时 messageQuota > 0）
     if (messageQuota > 0) {
       await this.userBalanceService.addQuota(order.userId, messageQuota);
+    }
+
+    if (payParams.isConversationReply && payParams.conversationId) {
+      payParams = await this.conversationInfoService.prepareReplySend(
+        order.userId,
+        payParams
+      );
     }
 
     // 如果有消息内容，创建消息记录（按次支付模式）
@@ -799,10 +826,6 @@ export class OrderInfoService extends BaseService {
       const smsCount = Number(payParams.smsCount ?? calculateSmsCount(content));
       const receiverPhoneMask =
         receiverPhone.substring(0, 3) + '****' + receiverPhone.substring(7);
-      const receiverPhoneHash = crypto
-        .createHash('sha256')
-        .update(receiverPhone)
-        .digest('hex');
       // 覆盖“发起支付后、支付到账前”才发生拉黑的竞态。付款记录保留，
       // 但消息直接进入已取消状态，确保永远不会进入真实短信发送队列。
       const blockedAfterPayment =
@@ -817,7 +840,6 @@ export class OrderInfoService extends BaseService {
         conversationId: payParams.conversationId || null,
         receiverPhone,
         receiverPhoneMask,
-        receiverPhoneHash,
         content,
         contentLength,
         smsCount,
@@ -842,8 +864,9 @@ export class OrderInfoService extends BaseService {
       const savedMessage = await this.messageInfoEntity.save(message);
       await this.createConversationTimeline(
         savedMessage,
-        receiverPhoneHash,
-        receiverPhoneMask
+        receiverPhone,
+        receiverPhoneMask,
+        payParams.isConversationReply === true
       );
 
       if (blockedAfterPayment) {
@@ -892,14 +915,15 @@ export class OrderInfoService extends BaseService {
 
   private async createConversationTimeline(
     message: MessageInfoEntity,
-    receiverPhoneHash: string,
-    receiverPhoneMask: string
+    receiverPhone: string,
+    receiverPhoneMask: string,
+    isConversationReply = false
   ) {
     const conversation = message.conversationId
       ? { id: message.conversationId }
       : await this.conversationInfoService.getOrCreate(
           message.userId,
-          receiverPhoneHash,
+          receiverPhone,
           receiverPhoneMask
         );
 
@@ -912,7 +936,8 @@ export class OrderInfoService extends BaseService {
 
     await this.conversationInfoService.addTimelineItem(conversation.id, {
       messageId: message.id,
-      direction: 1,
+      // 时间线方向始终以原会话发起人视角保存。
+      direction: isConversationReply ? 2 : 1,
       contentPreview: message.content.slice(0, 100),
       feeAmount: message.feeAmount,
       smsCount: message.smsCount,
@@ -921,8 +946,11 @@ export class OrderInfoService extends BaseService {
     await this.conversationInfoService.updateLastMsg(
       conversation.id,
       message.content.slice(0, 100),
-      0
+      isConversationReply ? 1 : 0
     );
+    if (isConversationReply) {
+      await this.conversationInfoService.incrementUnread(conversation.id);
+    }
   }
 
   /**

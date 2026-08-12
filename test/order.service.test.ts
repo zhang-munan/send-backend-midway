@@ -53,6 +53,42 @@ describe('短信套餐余额订单', () => {
     });
     expect(deductQuota).toHaveBeenCalledWith(12, 1);
   });
+
+  it('会话回复订单不把服务端解析出的目标手机号写入支付参数', async () => {
+    const service = new OrderInfoService();
+    const assertCanSend = jest.fn();
+    service.conversationInfoService = {
+      prepareConversationSend: jest.fn(async (_userId, params) => ({
+        ...params,
+        receiverPhone: '13900139000',
+        isAnonymous: 0,
+        isConversationReply: true,
+      })),
+    } as any;
+    service.messageBlacklistService = { assertCanSend } as any;
+    service.orderInfoEntity = {
+      create: jest.fn(data => data),
+      save: jest.fn(async data => ({ ...data, id: 101 })),
+    } as any;
+    jest
+      .spyOn(service as any, 'generateOrderNo')
+      .mockResolvedValue('BNSC2026081100001');
+
+    const order: any = await service.createOrder(12, {
+      conversationId: 8,
+      receiverPhone: '13811112222',
+      content: '回复内容',
+      isAnonymous: 1,
+    });
+
+    expect(assertCanSend).toHaveBeenCalledWith(12, '13900139000');
+    expect(order.payParams).toMatchObject({
+      conversationId: 8,
+      isAnonymous: 0,
+      isConversationReply: true,
+    });
+    expect(order.payParams.receiverPhone).toBeUndefined();
+  });
 });
 
 describe('订单退款流程', () => {

@@ -19,8 +19,16 @@ import { MessageBlacklistService } from '../../service/blacklist';
       'c.phone as blockedPhone',
     ],
     join: [
-      { entity: UserInfoEntity, alias: 'b', condition: 'a.blockerUserId = b.id' },
-      { entity: UserInfoEntity, alias: 'c', condition: 'a.blockedUserId = c.id' },
+      {
+        entity: UserInfoEntity,
+        alias: 'b',
+        condition: 'a.blockerUserId = b.id',
+      },
+      {
+        entity: UserInfoEntity,
+        alias: 'c',
+        condition: 'a.blockedUserId = c.id',
+      },
     ],
   },
 })

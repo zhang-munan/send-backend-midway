@@ -2,12 +2,12 @@ import { BaseService, CoolCommException } from '@cool-midway/core';
 import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Between, Equal, MoreThan, Repository } from 'typeorm';
-import * as crypto from 'crypto';
 import { MessageInfoEntity } from '../entity/info';
 import { MessageReplyEntity } from '../entity/reply';
 import { OrderInfoService } from '../../order/service/info';
 import { calculateSmsFee } from './pricing';
 import { MessageBlacklistService } from './blacklist';
+import { ConversationInfoService } from '../../conversation/service/info';
 
 /**
  * 消息信息
@@ -26,13 +26,28 @@ export class MessageInfoService extends BaseService {
   @Inject()
   messageBlacklistService: MessageBlacklistService;
 
+  @Inject()
+  conversationInfoService: ConversationInfoService;
+
+  /** APP 端不返回消息记录中存储的真实号码。 */
+  private toAppMessage(message: MessageInfoEntity) {
+    const { receiverPhone, ...safeMessage } = message;
+    return safeMessage;
+  }
+
   /**
    * 使用套餐配额发送消息，并生成对应的套餐余额订单。
    * @param userId 用户ID
    * @param params 消息参数
    */
   async sendMessage(userId: number, params: any) {
-    const { receiverPhone, content, sendType, scheduledAt } = params;
+    const sendParams = params.conversationId
+      ? await this.conversationInfoService.prepareConversationSend(
+          userId,
+          params
+        )
+      : params;
+    const { receiverPhone, content, sendType, scheduledAt } = sendParams;
 
     // 验证手机号格式（11位数字）
     if (!receiverPhone || !/^1\d{10}$/.test(receiverPhone)) {
@@ -52,7 +67,7 @@ export class MessageInfoService extends BaseService {
     // 检查发送频率限制
     await this.checkQuota(userId, receiverPhone);
 
-    return this.orderInfoService.sendByPackageBalance(userId, params);
+    return this.orderInfoService.sendByPackageBalance(userId, sendParams);
   }
   /**
    * 取消定时消息
@@ -72,7 +87,7 @@ export class MessageInfoService extends BaseService {
     }
     message.status = 7; // 已取消
     await this.messageInfoEntity.save(message);
-    return message;
+    return this.toAppMessage(message);
   }
 
   /**
@@ -99,7 +114,7 @@ export class MessageInfoService extends BaseService {
     message.retryCount = (message.retryCount || 0) + 1;
     message.failReason = null;
     await this.messageInfoEntity.save(message);
-    return message;
+    return this.toAppMessage(message);
   }
 
   /**
@@ -109,17 +124,12 @@ export class MessageInfoService extends BaseService {
    */
   async checkQuota(userId: number, receiverPhone: string) {
     await this.messageBlacklistService.assertCanSend(userId, receiverPhone);
-    const receiverPhoneHash = crypto
-      .createHash('sha256')
-      .update(receiverPhone)
-      .digest('hex');
-
     // 查询最近1小时内该用户对同一手机号的发送次数
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const count = await this.messageInfoEntity.count({
       where: {
         userId: Equal(userId),
-        receiverPhoneHash: Equal(receiverPhoneHash),
+        receiverPhone: Equal(receiverPhone),
         createTime: MoreThan(oneHourAgo) as any,
       },
     });
@@ -154,7 +164,12 @@ export class MessageInfoService extends BaseService {
       skip: (page - 1) * size,
       take: size,
     });
-    return { list, total, page, size };
+    return {
+      list: list.map(message => this.toAppMessage(message)),
+      total,
+      page,
+      size,
+    };
   }
 
   /**
@@ -242,7 +257,10 @@ export class MessageInfoService extends BaseService {
       where: { messageId: Equal(id) },
       order: { receivedAt: 'ASC' },
     });
-    return { ...message, reply: reply || null };
+    return {
+      ...this.toAppMessage(message),
+      reply: reply ? { ...reply, replyPhone: null } : null,
+    };
   }
 
   /**

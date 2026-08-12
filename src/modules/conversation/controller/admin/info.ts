@@ -12,7 +12,7 @@ import { UserInfoEntity } from '../../../user/entity/info';
   service: ConversationInfoService,
   pageQueryOp: {
     fieldEq: ['a.status', 'a.isMarked', 'a.isReceiverUnsubscribed'],
-    keyWordLikeFields: ['a.receiverPhoneMask'],
+    keyWordLikeFields: ['a.receiverPhone', 'a.receiverPhoneMask'],
     select: ['a.*', 'b.nickName as userName'],
     join: [
       { entity: UserInfoEntity, alias: 'b', condition: 'a.userId = b.id' },

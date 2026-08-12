@@ -52,7 +52,7 @@ export class MessageReplyService extends BaseService {
     }
     await this.checkQuota('token', params.token);
     if (params.ip) await this.checkQuota('ip', params.ip, 60);
-    await this.getTokenMessage(tokenData);
+    const message = await this.getTokenMessage(tokenData);
 
     const reply = await this.messageReplyEntity.save({
       messageId: tokenData.messageId,
@@ -63,19 +63,27 @@ export class MessageReplyService extends BaseService {
       isRead: 0,
       receivedAt: new Date(),
     });
+    const messageDirection =
+      await this.conversationInfoService.getSenderDirection(
+        tokenData.conversationId,
+        message.userId
+      );
+    const replyDirection = messageDirection === 1 ? 2 : 1;
     await this.conversationInfoService.updateLastMsg(
       tokenData.conversationId,
       content.slice(0, 100),
-      1
+      replyDirection === 2 ? 1 : 0
     );
-    await this.conversationInfoService.incrementUnread(
-      tokenData.conversationId
-    );
+    if (replyDirection === 2) {
+      await this.conversationInfoService.incrementUnread(
+        tokenData.conversationId
+      );
+    }
     await this.conversationInfoService.addTimelineItem(
       tokenData.conversationId,
       {
         replyId: reply.id,
-        direction: 2,
+        direction: replyDirection,
         contentPreview: content.slice(0, 100),
       }
     );

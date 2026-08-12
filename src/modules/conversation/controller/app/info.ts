@@ -36,6 +36,20 @@ export class AppConversationInfoController extends BaseController {
     );
   }
 
+  @Get('/:id/reply-context', { summary: '获取回复上下文' })
+  async replyContext() {
+    const context = await this.conversationInfoService.getReplyContext(
+      this.ctx.user.id,
+      this.ctx.params.id
+    );
+    // receiverPhone 只供服务端投递使用。匿名和实名场景都只返回允许展示的字段。
+    return this.ok({
+      conversationId: context.conversationId,
+      receiverPhoneDisplay: context.receiverPhoneDisplay,
+      isPeerAnonymous: context.isPeerAnonymous,
+    });
+  }
+
   @Post('/:id/read', { summary: '标记已读' })
   async read() {
     await this.conversationInfoService.markRead(

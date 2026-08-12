@@ -18,7 +18,7 @@ export class MessageInfoEntity extends BaseEntity {
   conversationId: number;
 
   @Index()
-  @Column({ type: 'varchar', length: 64, comment: '收件人手机号（后续加密）' })
+  @Column({ type: 'varchar', length: 64, comment: '收件人手机号（明文）' })
   receiverPhone: string;
 
   @Column({
@@ -27,10 +27,6 @@ export class MessageInfoEntity extends BaseEntity {
     comment: '收件人脱敏号码',
   })
   receiverPhoneMask: string;
-
-  @Index()
-  @Column({ type: 'varchar', length: 64, comment: '收件人手机号哈希' })
-  receiverPhoneHash: string;
 
   @Column({ type: 'text', comment: '消息内容' })
   content: string;

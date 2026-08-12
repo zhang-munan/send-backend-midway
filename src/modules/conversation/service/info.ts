@@ -2,10 +2,10 @@ import { BaseService, CoolCommException } from '@cool-midway/core';
 import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Equal, Repository } from 'typeorm';
-import * as crypto from 'crypto';
 import { ConversationInfoEntity } from '../entity/info';
 import { ConversationTimelineEntity } from '../entity/timeline';
 import { UserInfoEntity } from '../../user/entity/info';
+import { MessageInfoEntity } from '../../message/entity/info';
 
 /**
  * 对话信息
@@ -21,10 +21,12 @@ export class ConversationInfoService extends BaseService {
   @InjectEntityModel(UserInfoEntity)
   userInfoEntity: Repository<UserInfoEntity>;
 
-  private async getUserPhoneHash(userId: number) {
+  @InjectEntityModel(MessageInfoEntity)
+  messageInfoEntity: Repository<MessageInfoEntity>;
+
+  private async getUserPhone(userId: number) {
     const user = await this.userInfoEntity.findOneBy({ id: Equal(userId) });
-    if (!user?.phone) return null;
-    return crypto.createHash('sha256').update(user.phone).digest('hex');
+    return user?.phone || null;
   }
 
   /** MySQL bigint 可能由驱动返回 string，身份判断时统一按字符串比较。 */
@@ -39,14 +41,14 @@ export class ConversationInfoService extends BaseService {
     userId: number,
     conversationId: number
   ) {
-    const phoneHash = await this.getUserPhoneHash(userId);
+    const phone = await this.getUserPhone(userId);
     const where: any[] = [
       { id: Equal(conversationId), userId: Equal(userId), status: Equal(1) },
     ];
-    if (phoneHash) {
+    if (phone) {
       where.push({
         id: Equal(conversationId),
-        receiverPhoneHash: Equal(phoneHash),
+        receiverPhone: Equal(phone),
         status: Equal(1),
       });
     }
@@ -61,25 +63,106 @@ export class ConversationInfoService extends BaseService {
   }
 
   /**
+   * 收件人回复会话时的服务端上下文。
+   *
+   * 匿名会话只返回“匿名用户”给客户端，真实手机号只在服务端用于投递；
+   * 同时要求当前用户必须是原会话收件人，避免伪造 conversationId 获取号码。
+   */
+  async getReplyContext(userId: number, conversationId: number) {
+    const { conversation, viewerRole } = await this.getAccessibleConversation(
+      userId,
+      conversationId
+    );
+    if (viewerRole !== 'receiver') {
+      throw new CoolCommException('只有消息收件人可以回复该对话');
+    }
+
+    const [sender, firstMessage] = await Promise.all([
+      this.userInfoEntity.findOneBy({ id: Equal(conversation.userId) }),
+      this.messageInfoEntity.findOne({
+        where: {
+          conversationId: Equal(conversationId),
+          userId: Equal(conversation.userId),
+        },
+        order: { createTime: 'ASC' },
+      }),
+    ]);
+    if (!sender?.phone) {
+      throw new CoolCommException('对方暂时无法接收回复');
+    }
+
+    // 缺少历史消息时按匿名处理，默认不向客户端暴露发送者手机号。
+    const isPeerAnonymous = firstMessage?.isAnonymous !== 0;
+    return {
+      conversationId: conversation.id,
+      receiverPhone: sender.phone,
+      receiverPhoneDisplay: isPeerAnonymous ? '匿名用户' : sender.phone,
+      isPeerAnonymous,
+    };
+  }
+
+  /** 发送前解析并锁定回复参数，调用方不得信任客户端传入的手机号和匿名状态。 */
+  async prepareReplySend(userId: number, params: any) {
+    const context = await this.getReplyContext(userId, params.conversationId);
+    return {
+      ...params,
+      receiverPhone: context.receiverPhone,
+      isAnonymous: 0,
+      conversationId: context.conversationId,
+      isConversationReply: true,
+    };
+  }
+
+  /**
+   * 校验带 conversationId 的发送请求，并根据当前用户角色锁定真实收件号码。
+   * 原发起人可继续发送；原收件人走强制实名回复。
+   */
+  async prepareConversationSend(userId: number, params: any) {
+    const { conversation, viewerRole } = await this.getAccessibleConversation(
+      userId,
+      params.conversationId
+    );
+    if (viewerRole === 'receiver') {
+      return this.prepareReplySend(userId, params);
+    }
+    return {
+      ...params,
+      receiverPhone: conversation.receiverPhone,
+      conversationId: conversation.id,
+      isConversationReply: false,
+    };
+  }
+
+  /** 获取某个发送用户在指定会话时间线中的方向（以原会话发起人为视角）。 */
+  async getSenderDirection(conversationId: number, senderUserId: number) {
+    const conversation = await this.conversationInfoEntity.findOneBy({
+      id: Equal(conversationId),
+      status: Equal(1),
+    });
+    if (!conversation) throw new CoolCommException('对话不存在');
+    return this.isSameUserId(conversation.userId, senderUserId) ? 1 : 2;
+  }
+
+  /**
    * 获取或创建对话
    * @param userId
-   * @param receiverPhoneHash
+   * @param receiverPhone
    * @param receiverPhoneMask
    */
   async getOrCreate(
     userId: number,
-    receiverPhoneHash: string,
+    receiverPhone: string,
     receiverPhoneMask: string
   ) {
     let conversation = await this.conversationInfoEntity.findOneBy({
       userId: Equal(userId),
-      receiverPhoneHash,
+      receiverPhone,
       status: Equal(1),
     });
     if (!conversation) {
       conversation = await this.conversationInfoEntity.save({
         userId,
-        receiverPhoneHash,
+        receiverPhone,
         receiverPhoneMask,
         lastMsgIsReply: 0,
         unreadCount: 0,
@@ -239,11 +322,11 @@ export class ConversationInfoService extends BaseService {
    * @param size
    */
   async list(userId: number, page: number, size: number) {
-    const phoneHash = await this.getUserPhoneHash(userId);
+    const phone = await this.getUserPhone(userId);
     const skip = (page - 1) * size;
     const where: any[] = [{ userId: Equal(userId), status: Equal(1) }];
-    if (phoneHash) {
-      where.push({ receiverPhoneHash: Equal(phoneHash), status: Equal(1) });
+    if (phone) {
+      where.push({ receiverPhone: Equal(phone), status: Equal(1) });
     }
     const [list, total] = await this.conversationInfoEntity.findAndCount({
       where,

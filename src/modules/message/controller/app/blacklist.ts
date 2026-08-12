@@ -24,10 +24,7 @@ export class AppMessageBlacklistController extends BaseController {
   @Post('/block', { summary: '拉黑消息发送者' })
   async block(@Body('conversationId') conversationId: number) {
     return this.ok(
-      await this.messageBlacklistService.block(
-        this.ctx.user.id,
-        conversationId
-      )
+      await this.messageBlacklistService.block(this.ctx.user.id, conversationId)
     );
   }
 

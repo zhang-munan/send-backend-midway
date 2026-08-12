@@ -10,7 +10,7 @@ describe('短信发送者拉黑', () => {
       findOneBy: jest.fn(async () => ({
         id: 30,
         userId: 10,
-        receiverPhoneHash: 'hash',
+        receiverPhone: '13800138000',
         lastMsgContent: '最近一条消息',
         status: 1,
       })),
