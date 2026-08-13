@@ -89,6 +89,43 @@ describe('短信套餐余额订单', () => {
     });
     expect(order.payParams.receiverPhone).toBeUndefined();
   });
+
+  it('支付晚于预定时间时仍创建已到期的待发送任务', async () => {
+    const service = new OrderInfoService();
+    const create = jest.fn(data => data);
+    service.messageInfoEntity = {
+      create,
+      save: jest.fn(async data => ({ ...data, id: 200 })),
+    } as any;
+    service.messageBlacklistService = {
+      isSenderBlocked: jest.fn(async () => false),
+    } as any;
+    service.userBalanceService = { addQuota: jest.fn() } as any;
+    jest
+      .spyOn(service as any, 'createConversationTimeline')
+      .mockResolvedValue(undefined);
+
+    await (service as any).createMessageAfterPaid({
+      id: 100,
+      userId: 12,
+      payMethod: PAY_METHOD.WECHAT,
+      payAmount: 199,
+      payParams: {
+        receiverPhone: '13800138000',
+        content: '已到预定时间',
+        sendType: 2,
+        scheduledAt: '2020-01-01 10:00:00',
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sendType: 2,
+        scheduledAt: new Date('2020-01-01T02:00:00.000Z'),
+        status: 3,
+      })
+    );
+  });
 });
 
 describe('订单退款流程', () => {

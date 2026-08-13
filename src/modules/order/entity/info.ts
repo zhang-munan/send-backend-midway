@@ -136,6 +136,14 @@ export class OrderInfoEntity extends BaseEntity {
   })
   refundNo: string;
 
+  @Index()
+  @Column({
+    type: 'tinyint',
+    comment: '是否由总控制台强制退款：0否 1是',
+    default: 0,
+  })
+  isForceRefund: number;
+
   @Column({
     type: 'varchar',
     length: 45,

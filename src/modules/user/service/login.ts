@@ -45,6 +45,9 @@ export class UserLoginService extends BaseService {
    * @param code
    */
   async smsCode(phone, captchaId, code) {
+    if (!/^1[3-9]\d{9}$/.test(phone || '')) {
+      throw new CoolCommException('请输入正确的手机号');
+    }
     // 1、检查图片验证码  2、发送短信验证码
     const check = await this.baseSysLoginService.captchaCheck(captchaId, code);
     if (!check) {
@@ -59,6 +62,9 @@ export class UserLoginService extends BaseService {
    * @param smsCode
    */
   async phoneVerifyCode(phone, smsCode) {
+    if (!/^1[3-9]\d{9}$/.test(phone || '')) {
+      throw new CoolCommException('请输入正确的手机号');
+    }
     // 1、检查短信验证码  2、登录
     const check = await this.userSmsService.checkCode(phone, smsCode);
     if (check) {
@@ -141,7 +147,7 @@ export class UserLoginService extends BaseService {
         loginType: 2,
         nickName: phone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2'),
       };
-      await this.userInfoEntity.insert(user);
+      user = await this.userInfoEntity.save(user);
     }
     return this.token({ id: user.id });
   }

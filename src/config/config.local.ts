@@ -15,6 +15,8 @@ export default {
         username: 'app_user',
         password: 'Secret@mysql8.0',
         database: 'db_bangni',
+        // MySQL DATETIME 按业务时区解释，和 ADB worker 的 NOW() 保持一致。
+        timezone: '+08:00',
         // 自动建表 注意：线上部署的时候不要使用，有可能导致数据丢失
         // 不允许自动修改已存在的表结构；金额迁移等变更必须通过 SQL 脚本执行。
         synchronize: false,

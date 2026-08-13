@@ -1,13 +1,14 @@
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Between, Equal, MoreThan, Repository } from 'typeorm';
+import { Between, Equal, In, MoreThan, Repository } from 'typeorm';
 import { MessageInfoEntity } from '../entity/info';
 import { MessageReplyEntity } from '../entity/reply';
 import { OrderInfoService } from '../../order/service/info';
 import { calculateSmsFee } from './pricing';
 import { MessageBlacklistService } from './blacklist';
 import { ConversationInfoService } from '../../conversation/service/info';
+import { normalizeSendSchedule } from './schedule';
 
 /**
  * 消息信息
@@ -59,15 +60,15 @@ export class MessageInfoService extends BaseService {
       throw new CoolCommException('消息内容长度需在1-500字之间');
     }
 
-    // 定时发送必须传入定时时间
-    if (sendType === 2 && !scheduledAt) {
-      throw new CoolCommException('定时发送需设置发送时间');
-    }
+    const schedule = normalizeSendSchedule(sendType, scheduledAt);
 
     // 检查发送频率限制
     await this.checkQuota(userId, receiverPhone);
 
-    return this.orderInfoService.sendByPackageBalance(userId, sendParams);
+    return this.orderInfoService.sendByPackageBalance(userId, {
+      ...sendParams,
+      ...schedule,
+    });
   }
   /**
    * 取消定时消息
@@ -82,11 +83,27 @@ export class MessageInfoService extends BaseService {
     if (!message) {
       throw new CoolCommException('消息不存在');
     }
-    if (message.status !== 3) {
+    if (message.sendType !== 2) {
+      throw new CoolCommException('仅定时发送的消息可取消');
+    }
+    if (![1, 3].includes(message.status)) {
       throw new CoolCommException('仅待发送状态的消息可取消');
     }
-    message.status = 7; // 已取消
-    await this.messageInfoEntity.save(message);
+    // 条件更新与 Python 的 status=4 抢占互斥，避免任务开始发送后仍被取消。
+    const result = await this.messageInfoEntity.update(
+      {
+        id: Equal(messageId),
+        userId: Equal(userId),
+        sendType: Equal(2),
+        status: In([1, 3]),
+      },
+      { status: 7, failReason: '用户取消定时发送' }
+    );
+    if (!result.affected) {
+      throw new CoolCommException('消息已开始发送，无法取消');
+    }
+    message.status = 7;
+    message.failReason = '用户取消定时发送';
     return this.toAppMessage(message);
   }
 
@@ -111,6 +128,9 @@ export class MessageInfoService extends BaseService {
       message.receiverPhone
     );
     message.status = 3; // 待发送
+    // “重新发送”表示现在重新入队，不再沿用已经过期的原定时时间。
+    message.sendType = 1;
+    message.scheduledAt = null;
     message.retryCount = (message.retryCount || 0) + 1;
     message.failReason = null;
     await this.messageInfoEntity.save(message);
@@ -282,17 +302,22 @@ export class MessageInfoService extends BaseService {
     message.auditRemark = auditRemark || null;
     message.auditedAt = new Date();
 
-    // 审核通过后，立即发送状态设为待发送
+    // 审核通过后进入待发送；具体发送时机由 sendType/scheduledAt 决定。
     if (auditStatus === 1) {
       await this.messageBlacklistService.assertCanSend(
         message.userId,
         message.receiverPhone
       );
-      message.status = 1; // 审核通过
-      // 如果是立即发送，直接设为待发送
-      if (message.sendType === 1) {
-        message.status = 3; // 待发送
-      }
+      Object.assign(
+        message,
+        normalizeSendSchedule(message.sendType, message.scheduledAt, {
+          // 审核可能晚于用户选择的时间，到期后应尽快发送而不是永久卡住。
+          allowPast: true,
+        })
+      );
+      // 审核状态由 auditStatus 表达；通过后无论发送类型都统一进入待发送。
+      // Python 领取时再根据 sendType/scheduledAt 判断定时任务是否到期。
+      message.status = 3;
     } else if (auditStatus === 2) {
       message.status = 2; // 审核拒绝
     } else if (auditStatus === 3) {

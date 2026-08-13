@@ -1,0 +1,110 @@
+import { ILogger, Inject, Logger, Provide } from '@midwayjs/core';
+import { InjectEntityModel } from '@midwayjs/typeorm';
+import { Equal, In, IsNull, LessThanOrEqual, Repository } from 'typeorm';
+import { MessageReceiverNoticeEntity } from '../entity/receiver_notice';
+import { UserInfoEntity } from '../../user/entity/info';
+import { TencentSmsService } from '../../setting/service/tencent_sms';
+
+const MAX_BATCH_SIZE = 20;
+
+/** 领取并发送腾讯云收件人告知短信。 */
+@Provide()
+export class MessageReceiverNoticeService {
+  @InjectEntityModel(MessageReceiverNoticeEntity)
+  noticeEntity: Repository<MessageReceiverNoticeEntity>;
+
+  @InjectEntityModel(UserInfoEntity)
+  userInfoEntity: Repository<UserInfoEntity>;
+
+  @Inject()
+  tencentSmsService: TencentSmsService;
+
+  @Logger()
+  logger: ILogger;
+
+  private running = false;
+
+  private retryAt(attempts: number) {
+    const delaySeconds = Math.min(3600, 30 * 2 ** Math.min(attempts, 7));
+    return new Date(Date.now() + delaySeconds * 1000);
+  }
+
+  private errorMessage(error: unknown) {
+    return (error instanceof Error ? error.message : String(error)).slice(
+      0,
+      500
+    );
+  }
+
+  private async claim(id: number, attempts: number) {
+    const result = await this.noticeEntity.update(
+      { id: Equal(id), status: In([0, 3]) },
+      { status: 1, attempts: attempts + 1, lastError: null }
+    );
+    return result.affected === 1;
+  }
+
+  async processPending() {
+    if (this.running) return 0;
+    this.running = true;
+    let processed = 0;
+    try {
+      const pending = await this.noticeEntity.find({
+        where: [
+          { status: Equal(0) },
+          { status: Equal(3), nextRetryAt: IsNull() },
+          { status: Equal(3), nextRetryAt: LessThanOrEqual(new Date()) },
+        ],
+        order: { id: 'ASC' },
+        take: MAX_BATCH_SIZE,
+      });
+
+      for (const notice of pending) {
+        if (!(await this.claim(notice.id, notice.attempts))) continue;
+        processed += 1;
+        // 队列产生后用户可能已经登录，调用腾讯云前必须再次判断。
+        const registered = await this.userInfoEntity.findOne({
+          where: { phone: Equal(notice.phone) },
+          select: ['id'],
+        });
+        if (registered) {
+          await this.noticeEntity.update(notice.id, {
+            status: 4,
+            lastError: '手机号已进入系统，跳过告知短信',
+            nextRetryAt: null,
+          });
+          continue;
+        }
+
+        try {
+          const providerMsgId =
+            await this.tencentSmsService.sendRecipientNotice(
+              notice.phone,
+              notice.triggerCount
+            );
+          await this.noticeEntity.update(notice.id, {
+            status: 2,
+            providerMsgId,
+            sentAt: new Date(),
+            nextRetryAt: null,
+            lastError: null,
+          });
+        } catch (error) {
+          const attempts = notice.attempts + 1;
+          const lastError = this.errorMessage(error);
+          this.logger.error(
+            `收件人告知短信发送失败 id=${notice.id}: ${lastError}`
+          );
+          await this.noticeEntity.update(notice.id, {
+            status: 3,
+            nextRetryAt: this.retryAt(attempts),
+            lastError,
+          });
+        }
+      }
+      return processed;
+    } finally {
+      this.running = false;
+    }
+  }
+}

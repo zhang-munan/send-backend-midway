@@ -17,6 +17,7 @@ import {
   calculateSmsFee,
 } from '../../message/service/pricing';
 import { MessageBlacklistService } from '../../message/service/blacklist';
+import { normalizeSendSchedule } from '../../message/service/schedule';
 
 /** 支付方式 */
 export const PAY_METHOD = {
@@ -115,6 +116,10 @@ export class OrderInfoService extends BaseService {
       await this.messageBlacklistService.assertCanSend(userId, receiverPhone);
     }
 
+    const schedule = productId
+      ? { sendType: 1 as const, scheduledAt: null }
+      : normalizeSendSchedule(sendType, scheduledAt);
+
     // 获取商品信息
     let product: ProductInfoEntity;
     let payAmount: number;
@@ -162,8 +167,8 @@ export class OrderInfoService extends BaseService {
         ? isAnonymous
         : 1,
       isPublic: isPublic === 1 || isPublic === true ? 1 : 0,
-      sendType: sendType || 1,
-      scheduledAt: scheduledAt || null,
+      sendType: schedule.sendType,
+      scheduledAt: schedule.scheduledAt,
       templateId: templateId || null,
       conversationId: conversationId || null,
       senderSignature: senderSignature || null,
@@ -214,6 +219,14 @@ export class OrderInfoService extends BaseService {
     }
 
     const payParams = this.normalizePayParams(order.payParams);
+    if (payParams.content) {
+      Object.assign(
+        payParams,
+        normalizeSendSchedule(payParams.sendType, payParams.scheduledAt, {
+          allowPast: true,
+        })
+      );
+    }
     if (payParams.receiverPhone) {
       await this.messageBlacklistService.assertCanSend(
         userId,
@@ -272,9 +285,11 @@ export class OrderInfoService extends BaseService {
    * 使用套餐消息配额发送，并同步生成一笔已支付的套餐余额订单。
    */
   async sendByPackageBalance(userId: number, params: any) {
+    const schedule = normalizeSendSchedule(params.sendType, params.scheduledAt);
+    const normalizedParams = { ...params, ...schedule };
     await this.messageBlacklistService.assertCanSend(
       userId,
-      params.receiverPhone
+      normalizedParams.receiverPhone
     );
     const quotaToDeduct = 1;
     const balance = await this.userBalanceService.getBalance(userId);
@@ -300,17 +315,19 @@ export class OrderInfoService extends BaseService {
         payTime: new Date(),
         tradeNo: `PACKAGE_BALANCE_${orderNo}`,
         payParams: {
-          ...params,
+          ...normalizedParams,
           // 与按次支付一致，回复目标号码不落入会返回客户端的订单参数。
-          receiverPhone: params.isConversationReply
+          receiverPhone: normalizedParams.isConversationReply
             ? undefined
-            : params.receiverPhone,
-          isAnonymous: params.isConversationReply ? 0 : params.isAnonymous,
+            : normalizedParams.receiverPhone,
+          isAnonymous: normalizedParams.isConversationReply
+            ? 0
+            : normalizedParams.isAnonymous,
           messageQuota: 0,
           smsCount: quotaToDeduct,
           feeAmount: 0,
         },
-        clientIp: params.clientIp || null,
+        clientIp: normalizedParams.clientIp || null,
       })
     );
 
@@ -820,6 +837,13 @@ export class OrderInfoService extends BaseService {
 
     // 如果有消息内容，创建消息记录（按次支付模式）
     if (payParams.receiverPhone && payParams.content) {
+      // 订单创建时已要求未来时间；支付到账可能较晚，因此这里允许时间已到期，
+      // 但仍重新校验数据形状并转换为统一的 Date。
+      const schedule = normalizeSendSchedule(
+        payParams.sendType,
+        payParams.scheduledAt,
+        { allowPast: true }
+      );
       const receiverPhone: string = payParams.receiverPhone;
       const content: string = payParams.content;
       const contentLength = content.length;
@@ -848,9 +872,9 @@ export class OrderInfoService extends BaseService {
         isPublic:
           payParams.isPublic === 1 || payParams.isPublic === true ? 1 : 0,
         senderSignature: payParams.senderSignature || null,
-        sendType: payParams.sendType || 1,
-        scheduledAt: payParams.scheduledAt || null,
-        status: blockedAfterPayment ? 7 : 1,
+        sendType: schedule.sendType,
+        scheduledAt: schedule.scheduledAt,
+        status: blockedAfterPayment ? 7 : 3,
         auditStatus: 1,
         auditedAt: new Date(),
         feeAmount: Number(payParams.feeAmount ?? order.payAmount),
@@ -1117,6 +1141,87 @@ export class OrderInfoService extends BaseService {
     }
   }
 
+  /**
+   * 总控制台强制退款。允许用户已消耗套餐次数；实际退款仍按原支付渠道执行。
+   */
+  async forceRefund(orderId: number, reason: string, adminUserId: number) {
+    const refundReason = (reason || '').trim();
+    if (refundReason.length < 10 || refundReason.length > 200) {
+      throw new CoolCommException('操作原因需填写10-200个字');
+    }
+    const order = await this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
+    if (!order) throw new CoolCommException('订单不存在');
+    if (order.status !== ORDER_STATUS.PAID || Number(order.payAmount) <= 0) {
+      throw new CoolCommException('仅已支付且实付金额大于0的订单可强制退款');
+    }
+    if (
+      [REFUND_STATUS.PROCESSING, REFUND_STATUS.REFUNDED].includes(
+        Number(order.refundStatus || 0)
+      )
+    ) {
+      throw new CoolCommException('该订单正在退款或已经退款');
+    }
+    if (
+      ![PAY_METHOD.WECHAT, PAY_METHOD.BALANCE, PAY_METHOD.MOCK].includes(
+        order.payMethod
+      )
+    ) {
+      throw new CoolCommException('该支付方式暂不支持自动退款');
+    }
+
+    // 退款结算需要回收套餐次数或退回账户余额，先确保权益记录存在。
+    await this.userBalanceService.getOrInit(order.userId);
+
+    const refundNo = order.refundNo || `FRF${order.orderNo}`;
+    const claim = await this.orderInfoEntity
+      .createQueryBuilder()
+      .update(OrderInfoEntity)
+      .set({
+        refundStatus: REFUND_STATUS.PROCESSING,
+        refundReason,
+        refundApplyTime: order.refundApplyTime || new Date(),
+        refundAuditTime: new Date(),
+        refundAuditUserId: adminUserId,
+        refundRejectReason: null,
+        refundNo,
+        isForceRefund: 1,
+      })
+      .where('id = :id AND status = :status', {
+        id: orderId,
+        status: ORDER_STATUS.PAID,
+      })
+      .andWhere('refundStatus NOT IN (:...statuses)', {
+        statuses: [REFUND_STATUS.PROCESSING, REFUND_STATUS.REFUNDED],
+      })
+      .execute();
+    if (!claim.affected) {
+      throw new CoolCommException('订单状态已变化，请刷新后重试');
+    }
+
+    try {
+      order.refundReason = refundReason;
+      order.refundNo = refundNo;
+      order.isForceRefund = 1;
+      if (order.payMethod === PAY_METHOD.WECHAT) {
+        const result = await this.refundByWechat(order, refundNo);
+        const refund = this.unwrapWechatPayResult(result);
+        if (refund?.status === 'SUCCESS') await this.finishRefund(orderId);
+      } else {
+        await this.finishRefund(orderId);
+      }
+    } catch (error) {
+      await this.orderInfoEntity.update(
+        { id: orderId, refundStatus: REFUND_STATUS.PROCESSING },
+        {
+          refundStatus: REFUND_STATUS.FAILED,
+          refundRejectReason: this.getRefundErrorMessage(error),
+        }
+      );
+      throw error;
+    }
+    return this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
+  }
+
   /** 同步微信退款状态，供处理中的退款人工刷新。 */
   async syncRefund(orderId: number) {
     const order = await this.orderInfoEntity.findOneBy({ id: Equal(orderId) });
@@ -1265,16 +1370,26 @@ export class OrderInfoService extends BaseService {
       const payParams = this.normalizePayParams(order.payParams);
       const messageQuota = Number(payParams.messageQuota || 0);
       if (messageQuota > 0) {
+        const balance = await manager
+          .createQueryBuilder()
+          .select('messageQuota')
+          .from('user_balance', 'balance')
+          .where('userId = :userId', { userId: order.userId })
+          .setLock('pessimistic_write')
+          .getRawOne();
+        const quotaToDeduct = order.isForceRefund
+          ? Math.min(Number(balance?.messageQuota || 0), messageQuota)
+          : messageQuota;
         const result = await manager
           .createQueryBuilder()
           .update('user_balance')
-          .set({ messageQuota: () => `messageQuota - ${messageQuota}` })
+          .set({ messageQuota: () => `messageQuota - ${quotaToDeduct}` })
           .where('userId = :userId AND messageQuota >= :messageQuota', {
             userId: order.userId,
-            messageQuota,
+            messageQuota: quotaToDeduct,
           })
           .execute();
-        if (!result.affected) {
+        if (!result.affected && !order.isForceRefund) {
           throw new CoolCommException('用户剩余套餐条数不足，退款入账失败');
         }
       }

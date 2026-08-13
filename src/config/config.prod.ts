@@ -17,6 +17,8 @@ export default {
         username: process.env.DB_USERNAME || 'root',
         password: process.env.DB_PASSWORD || '',
         database: process.env.DB_DATABASE || 'cool',
+        // MySQL DATETIME 按业务时区解释，和 ADB worker 的 NOW() 保持一致。
+        timezone: '+08:00',
         // 自动建表 注意：线上部署的时候不要使用，有可能导致数据丢失
         synchronize: false,
         // 打印日志
