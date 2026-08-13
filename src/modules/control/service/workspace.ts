@@ -281,17 +281,26 @@ export class ControlWorkspaceService extends BaseService {
             where: { userId: Equal(userId) },
             lock: { mode: 'pessimistic_write' },
           });
+          if (!locked) {
+            throw new CoolCommException('用户权益记录不存在，请刷新后重试');
+          }
           const nextBalance = Number(locked.balance) + balanceDelta;
           const nextQuota = Number(locked.messageQuota) + quotaDelta;
           if (nextBalance < 0)
             throw new CoolCommException('调整后账户余额不能小于0');
           if (nextQuota < 0)
             throw new CoolCommException('调整后消息次数不能小于0');
-          await repository.update(locked.id, {
-            balance: nextBalance,
-            messageQuota: nextQuota,
-          });
-          return repository.findOneBy({ id: Equal(locked.id) });
+          const updateResult = await repository.update(
+            { userId: Equal(userId) },
+            {
+              balance: nextBalance,
+              messageQuota: nextQuota,
+            }
+          );
+          if (!updateResult.affected) {
+            throw new CoolCommException('用户权益记录已变化，请刷新后重试');
+          }
+          return repository.findOneBy({ userId: Equal(userId) });
         }
       );
       await this.finishAudit(audit.id, 1, this.balanceSnapshot(result));

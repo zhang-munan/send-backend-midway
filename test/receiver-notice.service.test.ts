@@ -17,6 +17,7 @@ describe('收件人告知短信消费', () => {
       findOne: jest.fn(async () => (registered ? { id: 1 } : null)),
     } as any;
     service.tencentSmsService = {
+      isRecipientNoticeEnabled: jest.fn(async () => true),
       sendRecipientNotice: jest.fn(async () => 'tx-message-id'),
     } as any;
     service.logger = { error: jest.fn() } as any;
@@ -43,6 +44,21 @@ describe('收件人告知短信消费', () => {
     expect(service.noticeEntity.update).toHaveBeenLastCalledWith(
       7,
       expect.objectContaining({ status: 4 })
+    );
+  });
+
+  it('开关关闭时跳过所有待发任务且不调用腾讯云', async () => {
+    const service = serviceFor(false);
+    service.tencentSmsService.isRecipientNoticeEnabled = jest.fn(
+      async () => false
+    );
+
+    await expect(service.processPending()).resolves.toBe(0);
+    expect(service.noticeEntity.find).not.toHaveBeenCalled();
+    expect(service.tencentSmsService.sendRecipientNotice).not.toHaveBeenCalled();
+    expect(service.noticeEntity.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: expect.anything() }),
+      expect.objectContaining({ status: 4, lastError: expect.stringContaining('关闭') })
     );
   });
 });

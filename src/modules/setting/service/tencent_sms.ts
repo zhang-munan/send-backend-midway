@@ -10,6 +10,8 @@ interface SceneConfig {
   params?: string[];
 }
 
+const ENABLED_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
+
 /** 统一封装 sms-tx，并从后台参数 smsTxTemplates 读取两类模板路由。 */
 @Provide()
 export class TencentSmsService {
@@ -22,6 +24,19 @@ export class TencentSmsService {
   private async sceneConfig(scene: SmsScene): Promise<SceneConfig> {
     const value = await this.baseSysParamService.dataByKey('smsTxTemplates');
     return value?.[scene] || {};
+  }
+
+  /** 收件人告知短信独立开关；参数不存在或值不明确时安全地视为关闭。 */
+  async isRecipientNoticeEnabled() {
+    const value = await this.baseSysParamService.dataByKey(
+      'recipientNoticeSmsEnabled'
+    );
+    if (value === true || value === 1) return true;
+    return ENABLED_VALUES.has(
+      String(value ?? '')
+        .trim()
+        .toLowerCase()
+    );
   }
 
   private interpolate(
@@ -74,6 +89,9 @@ export class TencentSmsService {
   }
 
   async sendRecipientNotice(phone: string, triggerCount: number) {
+    if (!(await this.isRecipientNoticeEnabled())) {
+      throw new Error('腾讯云收件人告知短信开关已关闭');
+    }
     const config = await this.sceneConfig('recipientNotice');
     const params = this.interpolate(config.params, {
       count: String(triggerCount),

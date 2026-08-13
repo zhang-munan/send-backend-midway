@@ -49,6 +49,19 @@ export class MessageReceiverNoticeService {
     this.running = true;
     let processed = 0;
     try {
+      if (!(await this.tencentSmsService.isRecipientNoticeEnabled())) {
+        // 关闭期间不保留旧任务，避免以后重新开启时补发已经过时的告知短信。
+        await this.noticeEntity.update(
+          { status: In([0, 3]) },
+          {
+            status: 4,
+            nextRetryAt: null,
+            lastError: '腾讯云收件人告知短信开关已关闭',
+          }
+        );
+        return 0;
+      }
+
       const pending = await this.noticeEntity.find({
         where: [
           { status: Equal(0) },
@@ -62,6 +75,15 @@ export class MessageReceiverNoticeService {
       for (const notice of pending) {
         if (!(await this.claim(notice.id, notice.attempts))) continue;
         processed += 1;
+        // 开关可能在本批任务执行期间被关闭，腾讯云调用前再次复核。
+        if (!(await this.tencentSmsService.isRecipientNoticeEnabled())) {
+          await this.noticeEntity.update(notice.id, {
+            status: 4,
+            lastError: '腾讯云收件人告知短信开关已关闭',
+            nextRetryAt: null,
+          });
+          continue;
+        }
         // 队列产生后用户可能已经登录，调用腾讯云前必须再次判断。
         const registered = await this.userInfoEntity.findOne({
           where: { phone: Equal(notice.phone) },
