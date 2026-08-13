@@ -50,6 +50,16 @@ export class AppConversationInfoController extends BaseController {
     });
   }
 
+  @Get('/:id/send-context', { summary: '获取继续发送上下文' })
+  async sendContext() {
+    return this.ok(
+      await this.conversationInfoService.getSendContext(
+        this.ctx.user.id,
+        this.ctx.params.id
+      )
+    );
+  }
+
   @Post('/:id/read', { summary: '标记已读' })
   async read() {
     await this.conversationInfoService.markRead(

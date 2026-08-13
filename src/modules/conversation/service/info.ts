@@ -101,6 +101,26 @@ export class ConversationInfoService extends BaseService {
     };
   }
 
+  /**
+   * 原发送者继续发送时使用的上下文。
+   *
+   * 只允许会话发起人读取收件号码；发送时服务端仍会根据 conversationId
+   * 再次锁定号码，避免客户端篡改收件人。
+   */
+  async getSendContext(userId: number, conversationId: number) {
+    const { conversation, viewerRole } = await this.getAccessibleConversation(
+      userId,
+      conversationId
+    );
+    if (viewerRole !== 'sender') {
+      throw new CoolCommException('只有消息发送者可以继续发送该对话');
+    }
+    return {
+      conversationId: conversation.id,
+      receiverPhone: conversation.receiverPhone,
+    };
+  }
+
   /** 发送前解析并锁定回复参数，调用方不得信任客户端传入的手机号和匿名状态。 */
   async prepareReplySend(userId: number, params: any) {
     const context = await this.getReplyContext(userId, params.conversationId);
