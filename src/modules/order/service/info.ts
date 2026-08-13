@@ -852,11 +852,12 @@ export class OrderInfoService extends BaseService {
         receiverPhone.substring(0, 3) + '****' + receiverPhone.substring(7);
       // 覆盖“发起支付后、支付到账前”才发生拉黑的竞态。付款记录保留，
       // 但消息直接进入已取消状态，确保永远不会进入真实短信发送队列。
-      const blockedAfterPayment =
-        await this.messageBlacklistService.isSenderBlocked(
+      const sendBlockReason =
+        await this.messageBlacklistService.getSendBlockReason(
           order.userId,
           receiverPhone
         );
+      const blockedAfterPayment = Boolean(sendBlockReason);
 
       const message = this.messageInfoEntity.create({
         userId: order.userId,
@@ -882,7 +883,7 @@ export class OrderInfoService extends BaseService {
         retryCount: 0,
         isFreeRetry: 0,
         failReason: blockedAfterPayment
-          ? '支付期间收件人已拉黑发送者，系统自动取消'
+          ? `支付期间${sendBlockReason}，系统自动取消`
           : null,
       });
       const savedMessage = await this.messageInfoEntity.save(message);
@@ -901,7 +902,7 @@ export class OrderInfoService extends BaseService {
             status: ORDER_STATUS.REFUNDED,
             refundStatus: REFUND_STATUS.REFUNDED,
             refundAmount: 0,
-            refundReason: '支付期间收件人已拉黑发送者，套餐条数已退回',
+            refundReason: `支付期间${sendBlockReason}，套餐条数已退回`,
             refundApplyTime: new Date(),
             refundTime: new Date(),
           });
@@ -910,7 +911,7 @@ export class OrderInfoService extends BaseService {
           // 防止重复入账，同时让运营人员能处理原路退款。
           await this.orderInfoEntity.update(order.id, {
             refundStatus: REFUND_STATUS.PENDING,
-            refundReason: '支付期间收件人已拉黑发送者，短信未发送',
+            refundReason: `支付期间${sendBlockReason}，短信未发送`,
             refundApplyTime: new Date(),
           });
         }

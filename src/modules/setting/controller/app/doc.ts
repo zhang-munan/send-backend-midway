@@ -1,4 +1,9 @@
-import { CoolController, BaseController } from '@cool-midway/core';
+import {
+  CoolController,
+  BaseController,
+  CoolTag,
+  TagTypes,
+} from '@cool-midway/core';
 import { Get, Inject, Query } from '@midwayjs/core';
 import { SettingDocEntity } from '../../entity/doc';
 import { SettingDocService } from '../../service/doc';
@@ -15,6 +20,7 @@ export class AppSettingDocController extends BaseController {
   @Inject()
   settingDocService: SettingDocService;
 
+  @CoolTag(TagTypes.IGNORE_TOKEN)
   @Get('/get', { summary: '获取文档内容' })
   async get(@Query('key') key: string) {
     return this.ok(await this.settingDocService.getByKey(key));

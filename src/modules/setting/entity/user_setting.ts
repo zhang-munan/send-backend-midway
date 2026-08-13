@@ -23,4 +23,7 @@ export class SettingUserEntity extends BaseEntity {
   // ---------- 隐私设置 ----------
   @Column({ type: 'tinyint', comment: '匿名发送默认开启', default: 1 })
   defaultAnonymous: number;
+
+  @Column({ type: 'tinyint', comment: '屏蔽所有业务短信', default: 0 })
+  blockAllSms: number;
 }

@@ -14,6 +14,7 @@ import { SettingUserEntity } from '../../entity/user_setting';
       'a.notifyReply',
       'a.notifyActivity',
       'a.defaultAnonymous',
+      'a.blockAllSms',
     ],
   },
 })

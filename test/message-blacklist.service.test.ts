@@ -6,6 +6,9 @@ describe('短信发送者拉黑', () => {
     service.userInfoEntity = {
       findOneBy: jest.fn(async () => ({ id: 20, phone: '13800138000', status: 1 })),
     } as any;
+    service.settingUserEntity = {
+      findOneBy: jest.fn(async () => ({ userId: 20, blockAllSms: 0 })),
+    } as any;
     service.conversationInfoEntity = {
       findOneBy: jest.fn(async () => ({
         id: 30,
@@ -66,9 +69,28 @@ describe('短信发送者拉黑', () => {
     service.blacklistEntity = {
       findOneBy: jest.fn(async () => ({ id: 40, status: 1 })),
     } as any;
+    service.settingUserEntity = {
+      findOneBy: jest.fn(async () => ({ userId: 20, blockAllSms: 0 })),
+    } as any;
 
     await expect(service.assertCanSend(10, '13800138000')).rejects.toThrow(
       '对方已将你拉黑'
     );
+  });
+
+  it('收件人开启全局屏蔽后阻止任何账号发送', async () => {
+    const service = new MessageBlacklistService();
+    service.userInfoEntity = {
+      findOneBy: jest.fn(async () => ({ id: 20, phone: '13800138000', status: 1 })),
+    } as any;
+    service.settingUserEntity = {
+      findOneBy: jest.fn(async () => ({ userId: 20, blockAllSms: 1 })),
+    } as any;
+    service.blacklistEntity = { findOneBy: jest.fn() } as any;
+
+    await expect(service.assertCanSend(10, '13800138000')).rejects.toThrow(
+      '对方已屏蔽所有短信'
+    );
+    expect(service.blacklistEntity.findOneBy).not.toHaveBeenCalled();
   });
 });

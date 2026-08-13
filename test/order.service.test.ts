@@ -98,7 +98,7 @@ describe('短信套餐余额订单', () => {
       save: jest.fn(async data => ({ ...data, id: 200 })),
     } as any;
     service.messageBlacklistService = {
-      isSenderBlocked: jest.fn(async () => false),
+      getSendBlockReason: jest.fn(async () => null),
     } as any;
     service.userBalanceService = { addQuota: jest.fn() } as any;
     jest
@@ -123,6 +123,49 @@ describe('短信套餐余额订单', () => {
         sendType: 2,
         scheduledAt: new Date('2020-01-01T02:00:00.000Z'),
         status: 3,
+      })
+    );
+  });
+
+  it('支付期间收件人开启全局屏蔽时取消消息并进入退款处理', async () => {
+    const service = new OrderInfoService();
+    const update = jest.fn();
+    service.orderInfoEntity = { update } as any;
+    service.messageInfoEntity = {
+      create: jest.fn(data => data),
+      save: jest.fn(async data => ({ ...data, id: 201 })),
+    } as any;
+    service.messageBlacklistService = {
+      getSendBlockReason: jest.fn(async () => '对方已屏蔽所有短信，暂时无法发送'),
+    } as any;
+    service.userBalanceService = { addQuota: jest.fn() } as any;
+    jest
+      .spyOn(service as any, 'createConversationTimeline')
+      .mockResolvedValue(undefined);
+
+    await (service as any).createMessageAfterPaid({
+      id: 101,
+      userId: 12,
+      payMethod: PAY_METHOD.WECHAT,
+      payAmount: 199,
+      payParams: {
+        receiverPhone: '13800138000',
+        content: '支付期间被屏蔽',
+        sendType: 1,
+      },
+    });
+
+    expect(service.messageInfoEntity.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 7,
+        failReason: expect.stringContaining('屏蔽所有短信'),
+      })
+    );
+    expect(update).toHaveBeenCalledWith(
+      101,
+      expect.objectContaining({
+        refundStatus: REFUND_STATUS.PENDING,
+        refundReason: expect.stringContaining('屏蔽所有短信'),
       })
     );
   });

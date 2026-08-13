@@ -6,8 +6,10 @@ import { ConversationInfoEntity } from '../../conversation/entity/info';
 import { UserInfoEntity } from '../../user/entity/info';
 import { MessageBlacklistEntity } from '../entity/blacklist';
 import { MessageInfoEntity } from '../entity/info';
+import { SettingUserEntity } from '../../setting/entity/user_setting';
 
 export const BLACKLIST_BLOCKED_MESSAGE = '对方已将你拉黑，无法继续发送短信';
+export const ALL_SMS_BLOCKED_MESSAGE = '对方已屏蔽所有短信，暂时无法发送';
 
 /** 短信拉黑业务服务。 */
 @Provide()
@@ -24,31 +26,44 @@ export class MessageBlacklistService extends BaseService {
   @InjectEntityModel(UserInfoEntity)
   userInfoEntity: Repository<UserInfoEntity>;
 
+  @InjectEntityModel(SettingUserEntity)
+  settingUserEntity: Repository<SettingUserEntity>;
+
   private sameId(left: number | string, right: number | string) {
     return String(left) === String(right);
   }
 
-  /** 返回指定收件手机号是否已拉黑该发送账号。 */
-  async isSenderBlocked(senderUserId: number, receiverPhone: string) {
-    if (!receiverPhone) return false;
+  /** 返回指定收件手机号阻止发送的原因。 */
+  async getSendBlockReason(senderUserId: number, receiverPhone: string) {
+    if (!receiverPhone) return null;
     const receiver = await this.userInfoEntity.findOneBy({
       phone: Equal(receiverPhone),
       status: Equal(1),
     });
-    if (!receiver || this.sameId(receiver.id, senderUserId)) return false;
-    return Boolean(
-      await this.blacklistEntity.findOneBy({
-        blockerUserId: Equal(receiver.id),
-        blockedUserId: Equal(senderUserId),
-        status: Equal(1),
-      })
-    );
+    if (!receiver) return null;
+
+    const setting = await this.settingUserEntity.findOneBy({
+      userId: Equal(receiver.id),
+    });
+    if (Number(setting?.blockAllSms) === 1) return ALL_SMS_BLOCKED_MESSAGE;
+
+    if (this.sameId(receiver.id, senderUserId)) return null;
+    const blacklist = await this.blacklistEntity.findOneBy({
+      blockerUserId: Equal(receiver.id),
+      blockedUserId: Equal(senderUserId),
+      status: Equal(1),
+    });
+    return blacklist ? BLACKLIST_BLOCKED_MESSAGE : null;
+  }
+
+  /** 兼容既有调用：全局屏蔽或发送者拉黑都视作已阻止。 */
+  async isSenderBlocked(senderUserId: number, receiverPhone: string) {
+    return Boolean(await this.getSendBlockReason(senderUserId, receiverPhone));
   }
 
   async assertCanSend(senderUserId: number, receiverPhone: string) {
-    if (await this.isSenderBlocked(senderUserId, receiverPhone)) {
-      throw new CoolCommException(BLACKLIST_BLOCKED_MESSAGE);
-    }
+    const reason = await this.getSendBlockReason(senderUserId, receiverPhone);
+    if (reason) throw new CoolCommException(reason);
   }
 
   /** 校验当前用户确实是该会话收件人，避免越权拉黑。 */
