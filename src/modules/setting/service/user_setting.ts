@@ -71,4 +71,30 @@ export class SettingUserService extends BaseService {
     }
     return this.getSetting(userId);
   }
+
+  /**
+   * 按手机号开启全局短信屏蔽。
+   *
+   * 告知短信只发给未注册手机号，因此腾讯云上行退订回调到达时可能还没有
+   * user_info。这里幂等创建与手机号登录一致的占位账号，使 blockAllSms 仍然
+   * 使用手机端设置页对应的 setting_user 字段；用户以后登录后可自行解除。
+   */
+  async blockAllSmsByPhone(phone: string) {
+    let user = await this.userInfoEntity.findOneBy({ phone: Equal(phone) });
+    if (!user) {
+      try {
+        await this.userInfoEntity.insert({
+          phone,
+          unionid: phone,
+          loginType: 2,
+          nickName: phone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2'),
+        });
+      } catch (error) {
+        // 腾讯云可能重试同一回调，并发插入会命中 phone 唯一键；重新读取即可。
+      }
+      user = await this.userInfoEntity.findOneBy({ phone: Equal(phone) });
+    }
+    if (!user) throw new Error('无法为退订手机号建立用户设置');
+    return this.updateSetting(user.id, { blockAllSms: 1 });
+  }
 }

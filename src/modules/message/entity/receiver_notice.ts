@@ -35,6 +35,7 @@ export class MessageReceiverNoticeEntity extends BaseEntity {
   @Column({ type: 'datetime', nullable: true, comment: '下次重试时间' })
   nextRetryAt: Date;
 
+  @Index()
   @Column({
     type: 'varchar',
     length: 128,
@@ -53,4 +54,34 @@ export class MessageReceiverNoticeEntity extends BaseEntity {
 
   @Column({ type: 'datetime', nullable: true, comment: '发送成功时间' })
   sentAt: Date;
+
+  @Column({
+    type: 'varchar',
+    length: 16,
+    nullable: true,
+    comment: '腾讯云下发状态：SUCCESS/FAIL',
+  })
+  deliveryStatus: string;
+
+  @Column({
+    type: 'varchar',
+    length: 128,
+    nullable: true,
+    comment: '腾讯云下发状态码',
+  })
+  deliveryCode: string;
+
+  @Column({
+    type: 'varchar',
+    length: 500,
+    nullable: true,
+    comment: '腾讯云下发状态描述',
+  })
+  deliveryDescription: string;
+
+  @Column({ type: 'datetime', nullable: true, comment: '用户实际接收时间' })
+  deliveredAt: Date;
+
+  @Column({ type: 'datetime', nullable: true, comment: '下发回调处理时间' })
+  deliveryReportedAt: Date;
 }
