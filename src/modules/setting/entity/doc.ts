@@ -2,7 +2,7 @@ import { BaseEntity } from '../../base/entity/base';
 import { Column, Entity, Index } from 'typeorm';
 
 /**
- * 协议/文档（用户协议、隐私政策、使用须知等）
+ * 协议/文档（用户协议、隐私政策、退款规则、使用须知等）
  */
 @Entity('setting_doc')
 export class SettingDocEntity extends BaseEntity {
@@ -10,7 +10,8 @@ export class SettingDocEntity extends BaseEntity {
   @Column({
     type: 'varchar',
     length: 64,
-    comment: '文档标识：user_agreement | privacy_policy | usage_guide',
+    comment:
+      '文档标识：user_agreement | privacy_policy | refund_rules | usage_guide',
   })
   docKey: string;
 
