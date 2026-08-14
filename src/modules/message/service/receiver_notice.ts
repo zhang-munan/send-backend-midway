@@ -1,6 +1,6 @@
 import { ILogger, Inject, Logger, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Equal, In, IsNull, LessThanOrEqual, Repository } from 'typeorm';
+import { Equal, In, IsNull, LessThanOrEqual, Raw, Repository } from 'typeorm';
 import { MessageReceiverNoticeEntity } from '../entity/receiver_notice';
 import { UserInfoEntity } from '../../user/entity/info';
 import { TencentSmsService } from '../../setting/service/tencent_sms';
@@ -42,6 +42,22 @@ export class MessageReceiverNoticeService {
       { status: 1, attempts: attempts + 1, lastError: null }
     );
     return result.affected === 1;
+  }
+
+  private async sentToday(phone: string) {
+    const sent = await this.noticeEntity.findOne({
+      where: {
+        phone: Equal(phone),
+        status: Equal(2),
+        // Use MySQL's session date so this agrees with the worker's DB_TIMEZONE.
+        sentAt: Raw(
+          alias =>
+            `${alias} >= CURDATE() AND ${alias} < DATE_ADD(CURDATE(), INTERVAL 1 DAY)`
+        ),
+      },
+      select: ['id'],
+    });
+    return Boolean(sent);
   }
 
   async processPending() {
@@ -93,6 +109,17 @@ export class MessageReceiverNoticeService {
           await this.noticeEntity.update(notice.id, {
             status: 4,
             lastError: '手机号已进入系统，跳过告知短信',
+            nextRetryAt: null,
+          });
+          continue;
+        }
+
+        // Normally the worker creates at most one task per phone per day. This
+        // second check also covers retries of tasks created on an earlier day.
+        if (await this.sentToday(notice.phone)) {
+          await this.noticeEntity.update(notice.id, {
+            status: 4,
+            lastError: '该手机号今日已发送过告知短信',
             nextRetryAt: null,
           });
           continue;

@@ -11,6 +11,7 @@ describe('收件人告知短信消费', () => {
       find: jest.fn(async () => [
         { id: 7, phone: '13800138000', triggerCount: 5, attempts: 0 },
       ]),
+      findOne: jest.fn(async () => null),
       update,
     } as any;
     service.userInfoEntity = {
@@ -44,6 +45,21 @@ describe('收件人告知短信消费', () => {
     expect(service.noticeEntity.update).toHaveBeenLastCalledWith(
       7,
       expect.objectContaining({ status: 4 })
+    );
+  });
+
+  it('同一手机号当天已成功发送告知短信则跳过腾讯云', async () => {
+    const service = serviceFor(false);
+    service.noticeEntity.findOne = jest.fn(async () => ({ id: 6 })) as any;
+
+    await expect(service.processPending()).resolves.toBe(1);
+    expect(service.tencentSmsService.sendRecipientNotice).not.toHaveBeenCalled();
+    expect(service.noticeEntity.update).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({
+        status: 4,
+        lastError: expect.stringContaining('今日已发送'),
+      })
     );
   });
 
