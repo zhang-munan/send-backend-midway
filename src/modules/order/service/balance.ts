@@ -33,6 +33,9 @@ export class UserBalanceService extends BaseService {
           totalConsumed: 0,
         })
         .orIgnore()
+        // 并发初始化被唯一键忽略时不会产生新的自增 ID，禁止 TypeORM
+        // 尝试回填实体，避免抛出缺少 entity id 的异常。
+        .updateEntity(false)
         .execute();
       record = await this.userBalanceEntity.findOneBy({
         userId: Equal(userId),

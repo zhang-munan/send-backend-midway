@@ -388,6 +388,9 @@ export class ControlWorkspaceService extends BaseService {
         totalConsumed: 0,
       })
       .orIgnore()
+      // INSERT IGNORE 命中已有记录时没有新的自增 ID，禁止 TypeORM 回填实体，
+      // 否则会抛出 "Cannot update entity because entity id is not set"。
+      .updateEntity(false)
       .execute();
   }
 
