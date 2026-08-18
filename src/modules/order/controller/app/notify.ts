@@ -31,4 +31,13 @@ export class AppOrderNotifyController extends BaseController {
     // 不能再包装成 Cool Admin 的通用响应格式。
     return await this.orderInfoService.wxpayNotify(this.ctx);
   }
+
+  /**
+   * 微信退款结果异步回调
+   */
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Post('/wxpay/refund', { summary: '微信退款回调' })
+  async wxpayRefund() {
+    return await this.orderInfoService.wxpayRefundNotify(this.ctx);
+  }
 }

@@ -206,6 +206,53 @@ describe('订单退款流程', () => {
     );
   });
 
+  it('总控制台强制退款会在订单备注中追加操作来源', async () => {
+    const service = new OrderInfoService();
+    const reason = '特殊客诉核实后执行强制退款';
+    const order = {
+      id: 1,
+      orderNo: 'BNSC2026081800001',
+      userId: 12,
+      status: ORDER_STATUS.PAID,
+      payAmount: 199,
+      payMethod: PAY_METHOD.MOCK,
+      refundStatus: REFUND_STATUS.NONE,
+      refundNo: null,
+      refundApplyTime: null,
+      remark: '原备注',
+    };
+    const execute = jest.fn(async () => ({ affected: 1 }));
+    const queryBuilder: any = {
+      update: jest.fn(() => queryBuilder),
+      set: jest.fn(() => queryBuilder),
+      where: jest.fn(() => queryBuilder),
+      andWhere: jest.fn(() => queryBuilder),
+      execute,
+    };
+    service.orderInfoEntity = {
+      findOneBy: jest
+        .fn()
+        .mockResolvedValueOnce(order)
+        .mockResolvedValueOnce({
+          ...order,
+          refundStatus: REFUND_STATUS.REFUNDED,
+          remark: `原备注\n[总控制台:admin] ${reason}`,
+        }),
+      createQueryBuilder: jest.fn(() => queryBuilder),
+    } as any;
+    service.userBalanceService = { getOrInit: jest.fn() } as any;
+    jest.spyOn(service as any, 'finishRefund').mockResolvedValue(undefined);
+
+    await service.forceRefund(1, reason, 99, 'admin');
+
+    expect(queryBuilder.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        refundReason: reason,
+        remark: `原备注\n[总控制台:admin] ${reason}`,
+      })
+    );
+  });
+
   it('后台拒绝退款时必须填写原因并记录审批人', async () => {
     const service = new OrderInfoService();
     const update = jest.fn(async () => ({ affected: 1 }));
@@ -264,6 +311,8 @@ describe('订单退款流程', () => {
     const service = new OrderInfoService();
     const order = {
       id: 1,
+      orderNo: 'BNSC2026080400001',
+      payAmount: 199,
       payMethod: PAY_METHOD.WECHAT,
       refundStatus: REFUND_STATUS.PROCESSING,
       refundNo: 'RFBNSC2026080400001',
@@ -282,7 +331,12 @@ describe('订单退款流程', () => {
     jest.spyOn(service as any, 'getWechatPayInstance').mockResolvedValue({
       find_refunds: jest.fn(async () => ({
         status: 200,
-        data: { status: 'SUCCESS' },
+        data: {
+          status: 'SUCCESS',
+          out_trade_no: order.orderNo,
+          out_refund_no: order.refundNo,
+          amount: { refund: order.payAmount },
+        },
       })),
     });
     const finishRefund = jest
@@ -292,6 +346,91 @@ describe('订单退款流程', () => {
     await service.syncRefund(1);
 
     expect(finishRefund).toHaveBeenCalledWith(1);
+  });
+
+  it('发起退款时携带独立退款回调地址', async () => {
+    const service = new OrderInfoService();
+    const refunds = jest.fn(async params => ({
+      status: 'PROCESSING',
+      out_trade_no: params.out_trade_no,
+      out_refund_no: params.out_refund_no,
+      amount: params.amount,
+    }));
+    service.pluginService = {
+      getInstance: jest.fn(async () => ({
+        getConfig: jest.fn(async () => ({
+          notify_url: 'https://example.com/app/order/notify/wxpay',
+        })),
+        getInstance: jest.fn(async () => ({ refunds })),
+      })),
+    } as any;
+
+    await (service as any).refundByWechat(
+      {
+        orderNo: 'BNSC2026080400001',
+        payAmount: 199,
+        refundReason: '退款测试',
+      },
+      'RFBNSC2026080400001'
+    );
+
+    expect(refunds).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notify_url: 'https://example.com/app/order/notify/wxpay/refund',
+      })
+    );
+  });
+
+  it('退款成功回调会校验订单并幂等完成退款', async () => {
+    const service = new OrderInfoService();
+    const order = {
+      id: 1,
+      orderNo: 'BNSC2026080400001',
+      payAmount: 199,
+      refundNo: 'RFBNSC2026080400001',
+    };
+    service.pluginService = {
+      getInstance: jest.fn(async () => ({
+        getConfig: jest.fn(async () => ({ mchid: '1900000001' })),
+        signVerify: jest.fn(async () => ({
+          mchid: '1900000001',
+          out_trade_no: order.orderNo,
+          out_refund_no: order.refundNo,
+          refund_status: 'SUCCESS',
+          amount: { refund: order.payAmount },
+        })),
+      })),
+    } as any;
+    service.orderInfoEntity = {
+      findOneBy: jest.fn(async () => order),
+    } as any;
+    const finishRefund = jest
+      .spyOn(service as any, 'finishRefund')
+      .mockResolvedValue(undefined);
+    const ctx: any = {};
+
+    await expect(service.wxpayRefundNotify(ctx)).resolves.toEqual({
+      code: 'SUCCESS',
+      message: '处理成功',
+    });
+    expect(finishRefund).toHaveBeenCalledWith(order.id);
+  });
+
+  it('定时对账会逐笔同步处理中的微信退款', async () => {
+    const service = new OrderInfoService();
+    service.orderInfoEntity = {
+      find: jest.fn(async () => [{ id: 1 }, { id: 2 }]),
+    } as any;
+    const syncRefund = jest
+      .spyOn(service, 'syncRefund')
+      .mockResolvedValue({} as any);
+
+    await expect(service.reconcileProcessingWechatRefunds()).resolves.toEqual({
+      checked: 2,
+      synced: 2,
+      failed: 0,
+    });
+    expect(syncRefund).toHaveBeenCalledTimes(2);
   });
 });
 

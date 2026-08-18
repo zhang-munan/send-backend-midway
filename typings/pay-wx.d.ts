@@ -23,6 +23,7 @@ export declare class CoolPlugin extends BasePlugin {
     mchid: string;
     key: string;
     notify_url: string;
+    refund_notify_url?: string;
     publicKey: string;
     privateKey: string;
     verifyPublicKey?: string;
@@ -52,6 +53,7 @@ export declare class CoolPlugin extends BasePlugin {
       mchid: string;
       key: string;
       notify_url: string;
+      refund_notify_url?: string;
       publicKey: string;
       privateKey: string;
       verifyPublicKey?: string;

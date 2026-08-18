@@ -11,6 +11,7 @@ import {
   OrderInfoService,
 } from '../../order/service/info';
 import { UserInfoEntity } from '../../user/entity/info';
+import { appendControlRemark } from '../../base/utils/control-remark';
 import { ControlAuditLogEntity } from '../entity/audit';
 
 export const CONTROL_ACTION = {
@@ -175,7 +176,8 @@ export class ControlWorkspaceService extends BaseService {
       const result = await this.orderInfoService.forceRefund(
         order.id,
         params.reason,
-        operator.userId
+        operator.userId,
+        operator.username
       );
       await this.finishAudit(
         audit.id,
@@ -201,8 +203,9 @@ export class ControlWorkspaceService extends BaseService {
     if (params.userId && Number(params.userId) !== Number(order.userId)) {
       throw new CoolCommException('订单不属于所选用户');
     }
-    if (targetStatus === order.status)
+    if (targetStatus === Number(order.status)) {
       throw new CoolCommException('订单已经是目标状态');
+    }
     this.validateOrderRepair(order, targetStatus);
     const audit = await this.createAudit({
       actionType: CONTROL_ACTION.ORDER_STATUS,
@@ -227,7 +230,11 @@ export class ControlWorkspaceService extends BaseService {
           }
           await repository.update(orderId, {
             status: targetStatus,
-            remark: this.appendRemark(locked.remark, reason, operator.username),
+            remark: appendControlRemark(
+              locked.remark,
+              reason,
+              operator.username
+            ),
           });
           return repository.findOneBy({ id: Equal(orderId) });
         }
@@ -334,6 +341,7 @@ export class ControlWorkspaceService extends BaseService {
       [ORDER_STATUS.PENDING, ORDER_STATUS.CLOSED].includes(targetStatus) &&
       (order.payTime ||
         order.tradeNo ||
+        order.refundTime ||
         order.refundStatus === REFUND_STATUS.REFUNDED)
     ) {
       throw new CoolCommException(
@@ -459,11 +467,6 @@ export class ControlWorkspaceService extends BaseService {
       balance: Number(balance.balance),
       messageQuota: Number(balance.messageQuota),
     };
-  }
-
-  private appendRemark(oldRemark: string, reason: string, operator: string) {
-    const line = `[总控制台:${operator}] ${reason}`;
-    return [oldRemark, line].filter(Boolean).join('\n').slice(0, 200);
   }
 
   private errorMessage(error: any) {
