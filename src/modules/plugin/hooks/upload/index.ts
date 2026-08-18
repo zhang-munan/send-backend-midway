@@ -8,6 +8,8 @@ import { CoolCommException } from '@cool-midway/core';
 import * as _ from 'lodash';
 import { pUploadPath } from '../../../../comm/path';
 
+const PUBLIC_UPLOAD_PREFIX = '/send/uploads';
+
 /**
  * 文件上传
  */
@@ -114,7 +116,7 @@ export class CoolPlugin extends BasePluginHook implements BaseUpload {
     this.validateTargetPath(targetPath, basePath);
 
     fs.writeFileSync(targetPath, data);
-    return `${domain}/upload/${dateDir}/${safeFileName}`;
+    return `${domain}${PUBLIC_UPLOAD_PREFIX}/${dateDir}/${safeFileName}`;
   }
 
   /**
@@ -145,7 +147,7 @@ export class CoolPlugin extends BasePluginHook implements BaseUpload {
     }
 
     fs.writeFileSync(targetPath, data);
-    return `${domain}/upload/${dateDir}/${safeKey}`;
+    return `${domain}${PUBLIC_UPLOAD_PREFIX}/${dateDir}/${safeKey}`;
   }
 
   /**
@@ -189,7 +191,7 @@ export class CoolPlugin extends BasePluginHook implements BaseUpload {
 
       const data = fs.readFileSync(file.data);
       fs.writeFileSync(target, data);
-      return domain + '/upload/' + name;
+      return domain + PUBLIC_UPLOAD_PREFIX + '/' + name;
     } catch (err) {
       console.error(err);
       if (err instanceof CoolCommException) {

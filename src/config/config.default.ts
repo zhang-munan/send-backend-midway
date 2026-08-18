@@ -28,7 +28,7 @@ export default {
         dir: path.join(__dirname, '..', '..', 'public'),
       },
       static: {
-        prefix: '/upload',
+        prefix: '/send/uploads',
         dir: pUploadPath(),
       },
     },
