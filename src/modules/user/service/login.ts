@@ -153,30 +153,32 @@ export class UserLoginService extends BaseService {
   }
 
   /**
-   * 公众号登录
+   * 公众号登录。H5 在微信内用 snsapi_base 静默拿到 code 后走这里，
+   * 通过 unionid 与小程序用户打通为同一 user_info。
    * @param code
    */
   async mp(code: string) {
-    let wxUserInfo = await this.userWxService.mpUserInfo(code);
-    if (wxUserInfo) {
-      delete wxUserInfo.privilege;
-      wxUserInfo = await this.saveWxInfo(
-        {
-          openid: wxUserInfo.openid,
-          unionid: wxUserInfo.unionid,
-          avatarUrl: wxUserInfo.headimgurl,
-          nickName: wxUserInfo.nickname,
-          gender: wxUserInfo.sex,
-          city: wxUserInfo.city,
-          province: wxUserInfo.province,
-          country: wxUserInfo.country,
-        },
-        1
-      );
-      return this.wxLoginToken(wxUserInfo);
-    } else {
-      throw new Error('微信登录失败');
+    if (!code) {
+      throw new CoolCommException('微信授权code不能为空');
     }
+    const wxUserInfo = await this.userWxService.mpSilentUserInfo(code);
+    if (!wxUserInfo?.openid) {
+      throw new CoolCommException('微信登录失败');
+    }
+    const saved = await this.saveWxInfo(
+      {
+        openid: wxUserInfo.openid,
+        unionid: wxUserInfo.unionid || wxUserInfo.openid,
+        avatarUrl: wxUserInfo.avatarUrl,
+        nickName: wxUserInfo.nickName,
+        gender: wxUserInfo.gender,
+        city: wxUserInfo.city,
+        province: wxUserInfo.province,
+        country: wxUserInfo.country,
+      },
+      1
+    );
+    return this.wxLoginToken(saved);
   }
 
   /**
@@ -327,19 +329,22 @@ export class UserLoginService extends BaseService {
     const unionid = wxUserInfo.unionid ? wxUserInfo.unionid : wxUserInfo.openid;
     let userInfo: any = await this.userInfoEntity.findOneBy({ unionid });
     if (!userInfo) {
-      const file = await this.pluginService.getInstance('upload');
-      const avatarUrl = await file.downAndUpload(
-        wxUserInfo.avatarUrl,
-        uuid() + '.png'
-      );
-      userInfo = {
+      let avatarUrl = wxUserInfo.avatarUrl || null;
+      if (avatarUrl) {
+        try {
+          const file = await this.pluginService.getInstance('upload');
+          avatarUrl = await file.downAndUpload(avatarUrl, uuid() + '.png');
+        } catch (e) {
+          // 静默授权没有头像，或头像下载失败时不影响登录
+        }
+      }
+      userInfo = await this.userInfoEntity.save({
         unionid,
-        nickName: wxUserInfo.nickName,
+        nickName: wxUserInfo.nickName || '微信用户',
         avatarUrl,
-        gender: wxUserInfo.gender,
-        loginType: wxUserInfo.type,
-      };
-      await this.userInfoEntity.insert(userInfo);
+        gender: wxUserInfo.gender || 0,
+        loginType: wxUserInfo.type ?? 1,
+      });
     }
     return this.token({ id: userInfo.id });
   }

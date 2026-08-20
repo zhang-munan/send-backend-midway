@@ -372,14 +372,22 @@ export class OrderInfoService extends BaseService {
     }
 
     const config = await plugin.getConfig();
-    const wxpay = await plugin.getInstance();
     const tradeType = this.normalizeWechatTradeType(params.tradeType);
+    const wxType = Number(params.wxType) === 1 ? 1 : 0;
+    const payAppid =
+      tradeType === 'JSAPI' && wxType === 1
+        ? await this.getOfficialAccountPayAppId()
+        : config.appid;
+    const wxpay = await plugin.getInstance({
+      ...config,
+      appid: payAppid,
+    });
     const clientIp =
       order.clientIp || ctx?.request?.ip || ctx?.ip || '127.0.0.1';
     // 微信支付金额单位为分，订单金额已按分存储。
     const total = Number(order.payAmount);
     const baseParams = {
-      appid: config.appid,
+      appid: payAppid,
       mchid: config.mchid,
       description: order.productName,
       out_trade_no: order.orderNo,
@@ -460,7 +468,11 @@ export class OrderInfoService extends BaseService {
       };
     }
 
-    const openid = await this.getWechatJsapiOpenid(userId, params.code);
+    const openid = await this.getWechatJsapiOpenid(
+      userId,
+      params.code,
+      wxType
+    );
 
     // 发起 JSAPI 预支付
     const result = await wxpay.transactions_jsapi({
@@ -493,7 +505,7 @@ export class OrderInfoService extends BaseService {
     }
     const packageStr = `prepay_id=${prepayId}`;
     const payParams = await this.createWechatPaySign(
-      config,
+      { ...config, appid: payAppid },
       plugin,
       packageStr
     );
@@ -533,7 +545,19 @@ export class OrderInfoService extends BaseService {
     throw new CoolCommException('不支持的微信支付类型');
   }
 
-  private async getWechatJsapiOpenid(userId: number, code?: string) {
+  private async getOfficialAccountPayAppId() {
+    const appid = await this.userWxService.getMpAppId();
+    if (!appid) {
+      throw new CoolCommException('未配置微信公众号，无法发起公众号支付');
+    }
+    return appid;
+  }
+
+  private async getWechatJsapiOpenid(
+    userId: number,
+    code?: string,
+    wxType = 0
+  ) {
     let userInfo = await this.userInfoEntity.findOneBy({
       id: Equal(userId),
     });
@@ -543,18 +567,25 @@ export class OrderInfoService extends BaseService {
 
     let userWx = userInfo.unionid
       ? await this.userWxEntity.findOne({
-          where: { unionid: Equal(userInfo.unionid), type: Equal(0) },
+          where: { unionid: Equal(userInfo.unionid), type: Equal(wxType) },
           order: { createTime: 'DESC' },
         })
       : null;
     if (!userWx && userInfo.unionid) {
       userWx = await this.userWxEntity.findOne({
-        where: { openid: Equal(userInfo.unionid), type: Equal(0) },
+        where: { openid: Equal(userInfo.unionid), type: Equal(wxType) },
         order: { createTime: 'DESC' },
       });
     }
     if (userWx?.openid) {
       return userWx.openid;
+    }
+
+    // 公众号 JSAPI 必须使用公众号 openid，不能回退到小程序 code2session。
+    if (wxType === 1) {
+      throw new CoolCommException(
+        '未获取到公众号openid，请在微信中重新打开页面'
+      );
     }
 
     if (!code) {

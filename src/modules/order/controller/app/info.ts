@@ -43,7 +43,8 @@ export class AppOrderInfoController extends BaseController {
     @Body('orderId') orderId: number,
     @Body('payMethod') payMethod: number,
     @Body('tradeType') tradeType?: string,
-    @Body('code') code?: string
+    @Body('code') code?: string,
+    @Body('wxType') wxType?: number
   ) {
     return this.ok(
       await this.orderInfoService.pay(
@@ -51,7 +52,7 @@ export class AppOrderInfoController extends BaseController {
         orderId,
         payMethod,
         this.ctx,
-        { tradeType, code }
+        { tradeType, code, wxType }
       )
     );
   }

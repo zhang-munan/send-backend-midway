@@ -7,6 +7,7 @@ import {
 } from '@cool-midway/core';
 import { Body, Get, Inject, Post, Query } from '@midwayjs/core';
 import { UserLoginService } from '../../service/login';
+import { UserWxService } from '../../service/wx';
 import { BaseSysLoginService } from '../../../base/service/sys/login';
 
 /**
@@ -20,6 +21,9 @@ export class AppUserLoginController extends BaseController {
 
   @Inject()
   userLoginService: UserLoginService;
+
+  @Inject()
+  userWxService: UserWxService;
 
   @Inject()
   baseSysLoginService: BaseSysLoginService;
@@ -41,6 +45,18 @@ export class AppUserLoginController extends BaseController {
   @Post('/mp', { summary: '公众号登录' })
   async mp(@Body('code') code: string) {
     return this.ok(await this.userLoginService.mp(code));
+  }
+
+  @CoolTag(TagTypes.IGNORE_TOKEN)
+  @Get('/mpOauthUrl', { summary: '构造公众号网页授权链接' })
+  async mpOauthUrl(
+    @Query('redirectUri') redirectUri: string,
+    @Query('scope') scope: string,
+    @Query('state') state: string
+  ) {
+    return this.ok(
+      await this.userWxService.buildMpOauthUrl(redirectUri, scope, state)
+    );
   }
 
   @CoolTag(TagTypes.IGNORE_TOKEN)
