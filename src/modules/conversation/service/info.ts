@@ -1,11 +1,12 @@
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
-import { Equal, Repository } from 'typeorm';
+import { Equal, In, Repository } from 'typeorm';
 import { ConversationInfoEntity } from '../entity/info';
 import { ConversationTimelineEntity } from '../entity/timeline';
 import { UserInfoEntity } from '../../user/entity/info';
 import { MessageInfoEntity } from '../../message/entity/info';
+import { MessageReplyEntity } from '../../message/entity/reply';
 
 /**
  * 对话信息
@@ -23,6 +24,69 @@ export class ConversationInfoService extends BaseService {
 
   @InjectEntityModel(MessageInfoEntity)
   messageInfoEntity: Repository<MessageInfoEntity>;
+
+  @InjectEntityModel(MessageReplyEntity)
+  messageReplyEntity: Repository<MessageReplyEntity>;
+
+  /**
+   * 管理端对话详情。时间线中的摘要只有 100 字，这里回查原始消息和回复，
+   * 确保管理员看到完整聊天内容。
+   */
+  async adminDetail(conversationId: number) {
+    const conversation = await this.conversationInfoEntity.findOneBy({
+      id: Equal(conversationId),
+    });
+    if (!conversation) throw new CoolCommException('对话不存在');
+
+    const [user, timeline] = await Promise.all([
+      this.userInfoEntity.findOneBy({ id: Equal(conversation.userId) }),
+      this.conversationTimelineEntity.find({
+        where: { conversationId: Equal(conversationId), status: Equal(1) },
+        order: { createTime: 'ASC' },
+      }),
+    ]);
+
+    const messageIds = timeline
+      .map(item => item.messageId)
+      .filter((id): id is number => id !== null && id !== undefined);
+    const replyIds = timeline
+      .map(item => item.replyId)
+      .filter((id): id is number => id !== null && id !== undefined);
+
+    const [messages, replies] = await Promise.all([
+      messageIds.length
+        ? this.messageInfoEntity.findBy({ id: In(messageIds) })
+        : Promise.resolve([]),
+      replyIds.length
+        ? this.messageReplyEntity.findBy({ id: In(replyIds) })
+        : Promise.resolve([]),
+    ]);
+    const messageMap = new Map(messages.map(item => [String(item.id), item]));
+    const replyMap = new Map(replies.map(item => [String(item.id), item]));
+
+    return {
+      conversation: {
+        ...conversation,
+        userName: user?.nickName || null,
+        userPhone: user?.phone || null,
+      },
+      messages: timeline.map(item => {
+        const message = item.messageId
+          ? messageMap.get(String(item.messageId))
+          : null;
+        const reply = item.replyId ? replyMap.get(String(item.replyId)) : null;
+        return {
+          ...item,
+          content:
+            item.direction === 1
+              ? message?.content || item.contentPreview
+              : reply?.replyContent || item.contentPreview,
+          messageStatus: message?.status ?? null,
+          replyType: reply?.replyType ?? null,
+        };
+      }),
+    };
+  }
 
   private async getUserPhone(userId: number) {
     const user = await this.userInfoEntity.findOneBy({ id: Equal(userId) });

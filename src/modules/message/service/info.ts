@@ -5,10 +5,10 @@ import { Between, Equal, In, MoreThan, Repository } from 'typeorm';
 import { MessageInfoEntity } from '../entity/info';
 import { MessageReplyEntity } from '../entity/reply';
 import { OrderInfoService } from '../../order/service/info';
-import { calculateSmsFee } from './pricing';
 import { MessageBlacklistService } from './blacklist';
 import { ConversationInfoService } from '../../conversation/service/info';
 import { normalizeSendSchedule } from './schedule';
+import { MessagePricingService } from './pricing-config';
 
 /**
  * 消息信息
@@ -29,6 +29,9 @@ export class MessageInfoService extends BaseService {
 
   @Inject()
   conversationInfoService: ConversationInfoService;
+
+  @Inject()
+  messagePricingService: MessagePricingService;
 
   /** APP 端不返回消息记录中存储的真实号码。 */
   private toAppMessage(message: MessageInfoEntity) {
@@ -165,8 +168,8 @@ export class MessageInfoService extends BaseService {
    * 计算费用
    * @param content 消息内容
    */
-  calculateFee(content: string) {
-    return calculateSmsFee(content);
+  async calculateFee(content: string) {
+    return this.messagePricingService.quote(content);
   }
 
   /**

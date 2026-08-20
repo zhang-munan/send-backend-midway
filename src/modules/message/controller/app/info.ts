@@ -109,10 +109,14 @@ export class AppMessageInfoController extends BaseController {
   /**
    * 计算发送费用
    */
+  @CoolTag(TagTypes.IGNORE_TOKEN)
   @Post('/calculateFee', { summary: '计算发送费用' })
   async calculateFee(@Body('content') content: string) {
+    const quote = await this.messageInfoService.calculateFee(content);
+    // 手机端只需要预估金额和版本，不下发内部规则或命中细节。
     return this.ok({
-      feeAmount: this.messageInfoService.calculateFee(content),
+      feeAmount: quote.feeAmount,
+      pricingVersion: quote.pricingVersion,
     });
   }
 }

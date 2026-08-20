@@ -2,6 +2,7 @@ import { CoolController, BaseController } from '@cool-midway/core';
 import { ConversationInfoEntity } from '../../entity/info';
 import { ConversationInfoService } from '../../service/info';
 import { UserInfoEntity } from '../../../user/entity/info';
+import { Get, Inject, Query } from '@midwayjs/core';
 
 /**
  * 对话信息管理
@@ -19,4 +20,12 @@ import { UserInfoEntity } from '../../../user/entity/info';
     ],
   },
 })
-export class AdminConversationInfoController extends BaseController {}
+export class AdminConversationInfoController extends BaseController {
+  @Inject()
+  conversationInfoService: ConversationInfoService;
+
+  @Get('/detail', { summary: '对话详情及完整聊天记录' })
+  async detail(@Query('id') id: number) {
+    return this.ok(await this.conversationInfoService.adminDetail(id));
+  }
+}

@@ -199,3 +199,55 @@ describe('消息页会话查询', () => {
     });
   });
 });
+
+describe('管理端对话详情', () => {
+  it('按时间正序返回全部记录，并用原始数据替换时间线摘要', async () => {
+    const service = new ConversationInfoService();
+    service.conversationInfoEntity = {
+      findOneBy: jest.fn(async () => ({
+        id: 8,
+        userId: 10,
+        receiverPhone: '13900139000',
+        msgCount: 2,
+      })),
+    } as any;
+    service.userInfoEntity = {
+      findOneBy: jest.fn(async () => ({
+        id: 10,
+        nickName: '测试用户',
+        phone: '13800138000',
+      })),
+    } as any;
+    service.conversationTimelineEntity = {
+      find: jest.fn(async () => [
+        { id: 1, messageId: 21, replyId: null, direction: 1, contentPreview: '截断内容' },
+        { id: 2, messageId: null, replyId: 31, direction: 2, contentPreview: '截断回复' },
+      ]),
+    } as any;
+    service.messageInfoEntity = {
+      findBy: jest.fn(async () => [
+        { id: 21, content: '完整的发送消息内容', status: 5 },
+      ]),
+    } as any;
+    service.messageReplyEntity = {
+      findBy: jest.fn(async () => [
+        { id: 31, replyContent: '完整的回复内容', replyType: 1 },
+      ]),
+    } as any;
+
+    const result = await service.adminDetail(8);
+
+    expect(result.conversation).toMatchObject({
+      id: 8,
+      userName: '测试用户',
+      userPhone: '13800138000',
+    });
+    expect(result.messages).toEqual([
+      expect.objectContaining({ content: '完整的发送消息内容', messageStatus: 5 }),
+      expect.objectContaining({ content: '完整的回复内容', replyType: 1 }),
+    ]);
+    expect(service.conversationTimelineEntity.find).toHaveBeenCalledWith(
+      expect.objectContaining({ order: { createTime: 'ASC' } })
+    );
+  });
+});

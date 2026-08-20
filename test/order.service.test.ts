@@ -5,8 +5,10 @@ import {
   REFUND_STATUS,
 } from '../src/modules/order/service/info';
 import {
+  calculatePricing,
   calculateSmsCount,
   calculateSmsFee,
+  DEFAULT_MESSAGE_PRICING_CONFIG,
 } from '../src/modules/message/service/pricing';
 
 describe('短信套餐余额订单', () => {
@@ -15,6 +17,61 @@ describe('短信套餐余额订单', () => {
     expect(calculateSmsCount('a'.repeat(10))).toBe(1);
     expect(calculateSmsCount('a'.repeat(11))).toBe(2);
     expect(calculateSmsFee('a'.repeat(11))).toBe(398);
+  });
+
+  it('支持固定区间价与后续阶梯价组合', () => {
+    const config: any = {
+      name: '组合价',
+      minimumAmount: 0,
+      maximumAmount: null,
+      rules: [
+        {
+          id: 'short',
+          name: '1-20 字固定价',
+          enabled: true,
+          minChars: 1,
+          maxChars: 20,
+          type: 'fixed',
+          amount: 299,
+        },
+        {
+          id: 'long',
+          name: '21 字起每 15 字加价',
+          enabled: true,
+          minChars: 21,
+          maxChars: null,
+          type: 'step',
+          baseAmount: 300,
+          unitChars: 15,
+          unitAmount: 80,
+        },
+      ],
+    };
+    expect(calculatePricing('a'.repeat(20), config).feeAmount).toBe(299);
+    expect(calculatePricing('a'.repeat(21), config).feeAmount).toBe(380);
+    expect(calculatePricing('a'.repeat(36), config).feeAmount).toBe(460);
+  });
+
+  it('支持规则优先级、最低价和封顶价', () => {
+    const config: any = {
+      ...DEFAULT_MESSAGE_PRICING_CONFIG,
+      minimumAmount: 250,
+      maximumAmount: 500,
+      rules: [
+        {
+          id: 'campaign',
+          name: '前 5 字活动价',
+          enabled: true,
+          minChars: 1,
+          maxChars: 5,
+          type: 'fixed',
+          amount: 100,
+        },
+        ...DEFAULT_MESSAGE_PRICING_CONFIG.rules,
+      ],
+    };
+    expect(calculatePricing('abc', config).feeAmount).toBe(250);
+    expect(calculatePricing('a'.repeat(50), config).feeAmount).toBe(500);
   });
 
   it('套餐配额发送会生成一笔已支付的套餐余额订单', async () => {
@@ -66,6 +123,12 @@ describe('短信套餐余额订单', () => {
       })),
     } as any;
     service.messageBlacklistService = { assertCanSend } as any;
+    service.messagePricingService = {
+      quote: jest.fn(async content => ({
+        ...calculatePricing(content, DEFAULT_MESSAGE_PRICING_CONFIG),
+        pricingVersion: 3,
+      })),
+    } as any;
     service.orderInfoEntity = {
       create: jest.fn(data => data),
       save: jest.fn(async data => ({ ...data, id: 101 })),
@@ -86,6 +149,8 @@ describe('短信套餐余额订单', () => {
       conversationId: 8,
       isAnonymous: 0,
       isConversationReply: true,
+      pricingVersion: 3,
+      feeAmount: 199,
     });
     expect(order.payParams.receiverPhone).toBeUndefined();
   });

@@ -12,10 +12,8 @@ import { UserWxEntity } from '../../user/entity/wx';
 import { MessageInfoEntity } from '../../message/entity/info';
 import { UserWxService } from '../../user/service/wx';
 import { ConversationInfoService } from '../../conversation/service/info';
-import {
-  calculateSmsCount,
-  calculateSmsFee,
-} from '../../message/service/pricing';
+import { calculateSmsCount } from '../../message/service/pricing';
+import { MessagePricingService } from '../../message/service/pricing-config';
 import { MessageBlacklistService } from '../../message/service/blacklist';
 import { normalizeSendSchedule } from '../../message/service/schedule';
 import { appendControlRemark } from '../../base/utils/control-remark';
@@ -82,6 +80,9 @@ export class OrderInfoService extends BaseService {
   @Inject()
   messageBlacklistService: MessageBlacklistService;
 
+  @Inject()
+  messagePricingService: MessagePricingService;
+
   /**
    * 创建订单
    * @param userId 用户ID
@@ -117,6 +118,10 @@ export class OrderInfoService extends BaseService {
       await this.messageBlacklistService.assertCanSend(userId, receiverPhone);
     }
 
+    if (!productId && (!content || content.length < 1 || content.length > 500)) {
+      throw new CoolCommException('消息内容长度需在1-500字之间');
+    }
+
     const schedule = productId
       ? { sendType: 1 as const, scheduledAt: null }
       : normalizeSendSchedule(sendType, scheduledAt);
@@ -126,6 +131,7 @@ export class OrderInfoService extends BaseService {
     let payAmount: number;
     let productName: string;
     let messageQuota: number;
+    let pricingQuote: any = null;
 
     if (productId) {
       product = await this.productInfoEntity.findOneBy({
@@ -137,10 +143,10 @@ export class OrderInfoService extends BaseService {
       productName = product.name;
       messageQuota = product.messageQuota * quantity;
     } else {
-      // 未指定商品时，按字数计费（每 10 字 1.99 元）
-      const smsCount = calculateSmsCount(content || '');
-      payAmount = calculateSmsFee(content || '');
-      productName = `单条短信发送（${smsCount}条）`;
+      // 创建订单时始终读取当前生效版本，客户端传入的预估金额不可信。
+      pricingQuote = await this.messagePricingService.quote(content || '');
+      payAmount = pricingQuote.feeAmount;
+      productName = `单条消息发送（${pricingQuote.contentLength}字）`;
       messageQuota = 0; // 按次不累积配额
     }
 
@@ -175,6 +181,14 @@ export class OrderInfoService extends BaseService {
       senderSignature: senderSignature || null,
       isConversationReply: isConversationReply === true,
       messageQuota,
+      ...(pricingQuote
+        ? {
+            smsCount: pricingQuote.billingUnits,
+            feeAmount: pricingQuote.feeAmount,
+            pricingVersion: pricingQuote.pricingVersion,
+            pricingRuleId: pricingQuote.matchedRuleId,
+          }
+        : {}),
     };
 
     const order = this.orderInfoEntity.create({

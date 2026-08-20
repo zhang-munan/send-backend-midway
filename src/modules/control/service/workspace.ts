@@ -13,11 +13,13 @@ import {
 import { UserInfoEntity } from '../../user/entity/info';
 import { appendControlRemark } from '../../base/utils/control-remark';
 import { ControlAuditLogEntity } from '../entity/audit';
+import { MessagePricingService } from '../../message/service/pricing-config';
 
 export const CONTROL_ACTION = {
   FORCE_REFUND: 'force_refund',
   ORDER_STATUS: 'order_status',
   USER_BENEFIT: 'user_benefit',
+  PRICING_CONFIG: 'pricing_config',
 };
 
 @Provide()
@@ -36,6 +38,56 @@ export class ControlWorkspaceService extends BaseService {
 
   @Inject()
   orderInfoService: OrderInfoService;
+
+  @Inject()
+  messagePricingService: MessagePricingService;
+
+  async pricingConfig() {
+    const active = await this.messagePricingService.getActive();
+    return {
+      version: active.version,
+      config: active.config,
+      publishedAt: active.entity?.createTime || null,
+      operatorName: active.entity?.operatorName || null,
+      reason: active.entity?.reason || null,
+    };
+  }
+
+  previewPricing(content: string, config: any) {
+    return this.messagePricingService.preview(String(content || ''), config);
+  }
+
+  async savePricingConfig(params: any, operator: any, ip?: string) {
+    const reason = this.validateReason(params.reason);
+    const before = await this.pricingConfig();
+    const audit = await this.createAudit({
+      actionType: CONTROL_ACTION.PRICING_CONFIG,
+      actionName: '发布消息计价规则',
+      operator,
+      reason,
+      beforeData: before,
+      ip,
+    });
+    try {
+      const entity = await this.messagePricingService.publish(
+        params.config,
+        operator,
+        reason
+      );
+      const after = {
+        version: entity.version,
+        config: entity.config,
+        publishedAt: entity.createTime,
+        operatorName: entity.operatorName,
+        reason: entity.reason,
+      };
+      await this.finishAudit(audit.id, 1, after);
+      return after;
+    } catch (error) {
+      await this.finishAudit(audit.id, 2, null, this.errorMessage(error));
+      throw error;
+    }
+  }
 
   async summary() {
     await this.syncPendingRefundAudits();

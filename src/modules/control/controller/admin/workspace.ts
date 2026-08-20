@@ -27,6 +27,33 @@ export class AdminControlWorkspaceController extends BaseController {
     return this.ok(await this.controlWorkspaceService.auditList(page, size));
   }
 
+  @Get('/pricingConfig', { summary: '获取当前消息计价配置' })
+  async pricingConfig() {
+    this.assertSuperAdmin();
+    return this.ok(await this.controlWorkspaceService.pricingConfig());
+  }
+
+  @Post('/previewPricing', { summary: '预览消息计价结果' })
+  async previewPricing(
+    @Body('content') content: string,
+    @Body('config') config: any
+  ) {
+    this.assertSuperAdmin();
+    return this.ok(this.controlWorkspaceService.previewPricing(content, config));
+  }
+
+  @Post('/savePricingConfig', { summary: '发布消息计价配置' })
+  async savePricingConfig(@Body(ALL) params: any) {
+    this.assertSuperAdmin();
+    return this.ok(
+      await this.controlWorkspaceService.savePricingConfig(
+        params,
+        this.ctx.admin,
+        this.ctx.ip
+      )
+    );
+  }
+
   @Get('/searchUsers', { summary: '搜索真实用户及权益' })
   async searchUsers(@Query('keyword') keyword: string) {
     this.assertSuperAdmin();
