@@ -1,17 +1,17 @@
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { Config, Inject, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
-import axios from 'axios';
-import * as crypto from 'crypto';
-import * as moment from 'moment';
 import { Equal, Repository } from 'typeorm';
-import { v1 as uuid } from 'uuid';
 import { PluginService } from '../../plugin/service/info';
 import { UserInfoEntity } from '../entity/info';
 import { UserWxEntity } from '../entity/wx';
 
+const DEFAULT_MP_REDIRECT_URI = 'https://mljxcloud.com/bangni_h5/';
+const MP_JSAPI_LIST = ['chooseWXPay'];
+
 /**
- * 微信
+ * 微信。通过 cool-admin 插件标识 `wx` 调用 node-easywechat。
+ * 缓存由插件继承 cool-admin 缓存，这里不再自行管理 access_token。
  */
 @Provide()
 export class UserWxService extends BaseService {
@@ -48,7 +48,7 @@ export class UserWxService extends BaseService {
    */
   async getMiniApp() {
     const wxPlugin: any = await this.getPlugin();
-    return wxPlugin.MiniApp();
+    return await wxPlugin.MiniApp();
   }
 
   /**
@@ -56,8 +56,96 @@ export class UserWxService extends BaseService {
    * @returns
    */
   async getOfficialAccount() {
+    const official = await this.getOfficialAccountConfig();
     const wxPlugin: any = await this.getPlugin();
-    return wxPlugin.OfficialAccount();
+    return await wxPlugin.OfficialAccount(official);
+  }
+
+  /**
+   * 读取并校验公众号配置。网页授权 / JSSDK 必须用已认证服务号，
+   * 不能沿用小程序 appid，也不能留插件安装时的占位文案。
+   * oauth 同时补齐插件文档的 scope/redirect 与 SDK 的 scopes/redirect_url。
+   */
+  async getOfficialAccountConfig() {
+    const config = await this.pluginService.getConfig('wx');
+    const official = config?.OfficialAccount || {};
+    const appid = String(
+      official.app_id || official.appid || official.appId || ''
+    ).trim();
+    const secret = String(official.secret || '').trim();
+    const miniAppId = String(config?.MiniApp?.app_id || '').trim();
+
+    if (
+      !this.isValidWxAppId(appid) ||
+      this.isPlaceholderValue(appid) ||
+      this.isPlaceholderValue(secret) ||
+      secret.length < 16
+    ) {
+      throw new CoolCommException(
+        '未配置微信公众号：请在管理后台「插件 → wx」填写 OfficialAccount.app_id 和 secret。必须使用已认证服务号，不能填写小程序 appid'
+      );
+    }
+    if (miniAppId && appid === miniAppId) {
+      throw new CoolCommException(
+        '公众号 appid 与小程序相同，网页授权和 JSSDK 无法使用。请填写已认证服务号的 appid'
+      );
+    }
+    return {
+      ...official,
+      app_id: appid,
+      secret,
+      oauth: this.normalizeOfficialAccountOAuth(official.oauth),
+    };
+  }
+
+  private normalizeOfficialAccountOAuth(oauth: any = {}) {
+    const rawScope = Array.isArray(oauth?.scopes)
+      ? String(oauth.scopes[0] || '')
+      : String(oauth?.scope || '');
+    const scope =
+      rawScope === 'snsapi_userinfo' || rawScope === 'snsapi_base'
+        ? rawScope
+        : 'snsapi_base';
+    const rawRedirect = String(
+      oauth?.redirect_url || oauth?.redirect || ''
+    ).trim();
+    const redirect =
+      rawRedirect.startsWith('http') && !this.isPlaceholderValue(rawRedirect)
+        ? rawRedirect
+        : DEFAULT_MP_REDIRECT_URI;
+    return {
+      ...oauth,
+      scope,
+      scopes: [scope],
+      redirect,
+      redirect_url: redirect,
+    };
+  }
+
+  private isValidWxAppId(appid: string) {
+    return /^wx[0-9a-z]{16}$/i.test(appid);
+  }
+
+  private isPlaceholderValue(value: string) {
+    return /公众号|示例|placeholder|app key|your |please/i.test(value);
+  }
+
+  private throwWechatAppIdError(error: any): never {
+    const message = String(error?.message || error || '');
+    if (message.includes('40013') || /invalid appid/i.test(message)) {
+      throw new CoolCommException(
+        '微信公众号 appid 无效：请在管理后台「插件 → wx」把 OfficialAccount.app_id / secret 改成已认证服务号的凭证，不要使用小程序或安装时的占位值'
+      );
+    }
+    throw new CoolCommException(message || '微信公众号接口调用失败');
+  }
+
+  private unwrapWxResponse(response: any) {
+    if (!response) return {};
+    if (typeof response.toObject === 'function') {
+      return response.toObject() || {};
+    }
+    return response.data || response;
   }
 
   /**
@@ -66,7 +154,7 @@ export class UserWxService extends BaseService {
    */
   async getOpenPlatform() {
     const wxPlugin: any = await this.getPlugin();
-    return wxPlugin.OpenPlatform();
+    return await wxPlugin.OpenPlatform();
   }
 
   /**
@@ -97,14 +185,8 @@ export class UserWxService extends BaseService {
    * 获得公众号 appid
    */
   async getMpAppId() {
-    const account = (await this.getOfficialAccount()).getAccount();
-    const appid = account.getAppId();
-    if (!appid || !/^wx[0-9a-z]{16}$/i.test(String(appid))) {
-      throw new CoolCommException(
-        '未配置有效的微信公众号 appid，请在插件市场完善 wx 插件 OfficialAccount 配置'
-      );
-    }
-    return appid;
+    const official = await this.getOfficialAccountConfig();
+    return official.app_id;
   }
 
   /**
@@ -116,12 +198,13 @@ export class UserWxService extends BaseService {
     scope = 'snsapi_base',
     state = 'STATE'
   ) {
-    const appid = await this.getMpAppId();
+    const official = await this.getOfficialAccountConfig();
+    const appid = official.app_id;
     if (!appid) {
       throw new CoolCommException('未配置微信公众号');
     }
     const targetRedirectUri =
-      redirectUri || 'https://mljxcloud.com/bangni_h5/';
+      redirectUri || official.oauth?.redirect || DEFAULT_MP_REDIRECT_URI;
     const oauthScope =
       scope === 'snsapi_userinfo' ? 'snsapi_userinfo' : 'snsapi_base';
     const oauthState = String(state || 'STATE').slice(0, 128);
@@ -151,42 +234,28 @@ export class UserWxService extends BaseService {
     if (!url) {
       throw new CoolCommException('url不能为空');
     }
-    const accessToken = this.normalizeAccessToken(await this.getWxToken());
-    const ticket = await axios.get(
-      'https://api.weixin.qq.com/cgi-bin/ticket/getticket',
-      {
-        params: {
-          access_token: accessToken,
-          type: 'jsapi',
-        },
-      }
-    );
-    if (ticket.data?.errcode && ticket.data.errcode !== 0) {
-      throw new CoolCommException(
-        ticket.data.errmsg || '获取jsapi_ticket失败'
-      );
-    }
-
-    const appid = await this.getMpAppId();
-    const result = {
-      timestamp: parseInt(moment().valueOf() / 1000 + ''),
-      nonceStr: uuid(),
-      appId: appid,
-      signature: '',
-      jsApiList: ['chooseWXPay'],
-    };
     const plainUrl = decodeURI(String(url)).split('#')[0];
-    const signArr = [];
-    signArr.push('jsapi_ticket=' + ticket.data.ticket);
-    signArr.push('noncestr=' + result.nonceStr);
-    signArr.push('timestamp=' + result.timestamp);
-    signArr.push('url=' + plainUrl);
-    // 微信 JSSDK 签名为小写 sha1
-    result.signature = crypto
-      .createHash('sha1')
-      .update(signArr.join('&'))
-      .digest('hex');
-    return result;
+    try {
+      const app = await this.getOfficialAccount();
+      const utils = app.getUtils?.();
+      if (!utils?.buildJsSdkConfig) {
+        throw new CoolCommException('微信插件版本过低，请升级 wx 插件');
+      }
+      const config = await utils.buildJsSdkConfig(plainUrl, MP_JSAPI_LIST);
+      return {
+        timestamp: config.timestamp,
+        nonceStr: config.nonceStr,
+        appId: config.appId,
+        signature: config.signature,
+        jsApiList: config.jsApiList || MP_JSAPI_LIST,
+        openTagList: config.openTagList || [],
+      };
+    } catch (error) {
+      if (error instanceof CoolCommException) {
+        throw error;
+      }
+      this.throwWechatAppIdError(error);
+    }
   }
 
   /**
@@ -206,7 +275,7 @@ export class UserWxService extends BaseService {
     };
     const scope = String(token.scope || '');
     if (scope.includes('snsapi_userinfo')) {
-      const info = await this.openOrMpUserInfo(token);
+      const info = await this.openOrMpUserInfo(token, 'mp');
       if (info && !info.errcode) {
         result.unionid = info.unionid || result.unionid;
         result.nickName = info.nickname;
@@ -228,18 +297,14 @@ export class UserWxService extends BaseService {
    */
   async getMpUnionidByOpenid(openid: string) {
     try {
-      const accessToken = this.normalizeAccessToken(await this.getWxToken('mp'));
-      const res = await axios.get(
-        'https://api.weixin.qq.com/cgi-bin/user/info',
-        {
-          params: {
-            access_token: accessToken,
-            openid,
-            lang: 'zh_CN',
-          },
-        }
-      );
-      return res.data?.unionid || null;
+      const app = await this.getOfficialAccount();
+      const response = await app.getClient().get('/cgi-bin/user/info', {
+        params: {
+          openid,
+          lang: 'zh_CN',
+        },
+      });
+      return this.unwrapWxResponse(response)?.unionid || null;
     } catch (e) {
       return null;
     }
@@ -259,73 +324,88 @@ export class UserWxService extends BaseService {
    */
   async appUserInfo(code) {
     const token = await this.openOrMpToken(code, 'open');
-    return await this.openOrMpUserInfo(token);
+    return await this.openOrMpUserInfo(token, 'open');
   }
 
   /**
-   * 获得微信token 不用code
-   * @param appid
-   * @param secret
+   * 获得微信 token。按插件文档：先 getAccessToken，再 getToken。
+   * 插件已把缓存接到 cool-admin，不要自行缓存。
    */
   public async getWxToken(type = 'mp') {
-    let app;
-    if (type == 'mp') {
-      app = await this.getOfficialAccount();
-    } else {
-      app = await this.getOpenPlatform();
+    try {
+      const app =
+        type == 'mp'
+          ? await this.getOfficialAccount()
+          : await this.getOpenPlatform();
+      const accessToken = await app.getAccessToken();
+      return await accessToken.getToken();
+    } catch (error) {
+      if (error instanceof CoolCommException) {
+        throw error;
+      }
+      this.throwWechatAppIdError(error);
     }
-    return await app.getAccessToken().getToken();
-  }
-
-  private normalizeAccessToken(token: any) {
-    if (!token) return '';
-    if (typeof token === 'string') return token;
-    return token.access_token || token.token || '';
   }
 
   /**
    * 获得用户信息
    * @param token
    */
-  async openOrMpUserInfo(token) {
-    return await axios
-      .get('https://api.weixin.qq.com/sns/userinfo', {
-        params: {
-          access_token: token.access_token,
-          openid: token.openid,
-          lang: 'zh_CN',
-        },
-      })
-      .then(res => {
-        return res.data;
-      });
+  async openOrMpUserInfo(token, type = 'mp') {
+    const app =
+      type == 'mp'
+        ? await this.getOfficialAccount()
+        : await this.getOpenPlatform();
+    const oauth = app.getOAuth();
+    if (typeof oauth.withOpenid === 'function') {
+      oauth.withOpenid(token.openid);
+    }
+    const user = await oauth.userFromToken(token.access_token);
+    const raw = user?.getRaw?.() || {};
+    if (raw.errcode) {
+      return raw;
+    }
+    return {
+      openid: raw.openid || user?.getId?.(),
+      unionid: raw.unionid,
+      nickname: raw.nickname || user?.getNickname?.(),
+      headimgurl: raw.headimgurl || user?.getAvatar?.(),
+      sex: raw.sex,
+      city: raw.city,
+      province: raw.province,
+      country: raw.country,
+    };
   }
 
   /**
-   * 获得token嗯
+   * 用网页授权 code 换 token
    * @param code
    * @param type
    */
   async openOrMpToken(code, type = 'mp') {
-    const account =
-      type == 'mp'
-        ? (await this.getOfficialAccount()).getAccount()
-        : (await this.getMiniApp()).getAccount();
-    const result = await axios.get(
-      'https://api.weixin.qq.com/sns/oauth2/access_token',
-      {
-        params: {
-          appid: account.getAppId(),
-          secret: account.getSecret(),
-          code,
-          grant_type: 'authorization_code',
-        },
+    try {
+      const app =
+        type == 'mp'
+          ? await this.getOfficialAccount()
+          : await this.getOpenPlatform();
+      const oauth = app.getOAuth();
+      const scoped =
+        type == 'mp' && typeof oauth.scopes === 'function'
+          ? oauth.scopes(['snsapi_base']) || oauth
+          : oauth;
+      const token = await scoped.tokenFromCode(code);
+      if (token?.errcode) {
+        this.throwWechatAppIdError({
+          message: token.errmsg || '微信授权code无效',
+        });
       }
-    );
-    if (result.data?.errcode) {
-      throw new CoolCommException(result.data.errmsg || '微信授权code无效');
+      return token;
+    } catch (error) {
+      if (error instanceof CoolCommException) {
+        throw error;
+      }
+      this.throwWechatAppIdError(error);
     }
-    return result.data;
   }
 
   /**
