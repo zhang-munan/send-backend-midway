@@ -103,9 +103,9 @@ export class UserWxService extends BaseService {
       ? String(oauth.scopes[0] || '')
       : String(oauth?.scope || '');
     const scope =
-      rawScope === 'snsapi_userinfo' || rawScope === 'snsapi_base'
+      rawScope === 'snsapi_userinfo' || rawScope === 'snsapi_userinfo'
         ? rawScope
-        : 'snsapi_base';
+        : 'snsapi_userinfo';
     const rawRedirect = String(
       oauth?.redirect_url || oauth?.redirect || ''
     ).trim();
@@ -195,7 +195,7 @@ export class UserWxService extends BaseService {
    */
   async buildMpOauthUrl(
     redirectUri: string,
-    scope = 'snsapi_base',
+    scope = 'snsapi_userinfo',
     state = 'STATE'
   ) {
     const official = await this.getOfficialAccountConfig();
@@ -206,7 +206,7 @@ export class UserWxService extends BaseService {
     const targetRedirectUri =
       redirectUri || official.oauth?.redirect || DEFAULT_MP_REDIRECT_URI;
     const oauthScope =
-      scope === 'snsapi_userinfo' ? 'snsapi_userinfo' : 'snsapi_base';
+      scope === 'snsapi_userinfo' ? 'snsapi_userinfo' : 'snsapi_userinfo';
     const oauthState = String(state || 'STATE').slice(0, 128);
     const encodedRedirectUri = encodeURIComponent(targetRedirectUri);
     const oauthUrl =
@@ -391,7 +391,7 @@ export class UserWxService extends BaseService {
       const oauth = app.getOAuth();
       const scoped =
         type == 'mp' && typeof oauth.scopes === 'function'
-          ? oauth.scopes(['snsapi_base']) || oauth
+          ? oauth.scopes(['snsapi_userinfo']) || oauth
           : oauth;
       const token = await scoped.tokenFromCode(code);
       if (token?.errcode) {

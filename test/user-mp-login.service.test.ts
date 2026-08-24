@@ -9,7 +9,7 @@ describe('公众号静默登录', () => {
       mpSilentUserInfo: jest.fn(async () => ({
         openid: 'mp-openid-1',
         unionid: 'union-1',
-        scope: 'snsapi_base',
+        scope: 'snsapi_userinfo',
       })),
     } as any;
     service.userWxEntity = {
@@ -47,7 +47,7 @@ describe('公众号静默登录', () => {
       mpSilentUserInfo: jest.fn(async () => ({
         openid: 'mp-openid-2',
         unionid: 'union-2',
-        scope: 'snsapi_base',
+        scope: 'snsapi_userinfo',
       })),
     } as any;
     service.userWxEntity = {
@@ -87,14 +87,14 @@ describe('公众号网页授权链接', () => {
     app_id: 'wx_mp_appid',
     secret: 'abcdefghijklmnopqrstuvwxyz123456',
     oauth: {
-      scope: 'snsapi_base',
-      scopes: ['snsapi_base'],
+      scope: 'snsapi_userinfo',
+      scopes: ['snsapi_userinfo'],
       redirect: 'https://mljxcloud.com/bangni_h5/',
       redirect_url: 'https://mljxcloud.com/bangni_h5/',
     },
   };
 
-  it('按微信文档顺序构造 snsapi_base 授权链接', async () => {
+  it('按微信文档顺序构造 snsapi_userinfo 授权链接', async () => {
     const service = new UserWxService();
     jest
       .spyOn(service, 'getOfficialAccountConfig')
@@ -102,12 +102,12 @@ describe('公众号网页授权链接', () => {
 
     const result = await service.buildMpOauthUrl(
       'https://mljxcloud.com/bangni_h5/',
-      'snsapi_base',
+      'snsapi_userinfo',
       'silent'
     );
 
     expect(result.oauthUrl).toBe(
-      'https://open.weixin.qq.com/connect/oauth2/authorize?appid=wx_mp_appid&redirect_uri=https%3A%2F%2Fmljxcloud.com%2Fbangni_h5%2F&response_type=code&scope=snsapi_base&state=silent#wechat_redirect'
+      'https://open.weixin.qq.com/connect/oauth2/authorize?appid=wx_mp_appid&redirect_uri=https%3A%2F%2Fmljxcloud.com%2Fbangni_h5%2F&response_type=code&scope=snsapi_userinfo&state=silent#wechat_redirect'
     );
   });
 
@@ -116,7 +116,7 @@ describe('公众号网页授权链接', () => {
     jest
       .spyOn(service, 'getOfficialAccountConfig')
       .mockResolvedValue(officialConfig as any);
-    const result = await service.buildMpOauthUrl('', 'snsapi_base', 'silent');
+    const result = await service.buildMpOauthUrl('', 'snsapi_userinfo', 'silent');
     expect(result.redirectUri).toBe('https://mljxcloud.com/bangni_h5/');
     expect(result.oauthUrl).toContain(
       'redirect_uri=https%3A%2F%2Fmljxcloud.com%2Fbangni_h5%2F'
@@ -183,7 +183,7 @@ describe('公众号插件配置校验', () => {
           app_id: 'wx1234567890abcdef',
           secret: 'abcdefghijklmnopqrstuvwxyz123456',
           oauth: {
-            scope: 'snsapi_base',
+            scope: 'snsapi_userinfo',
             redirect: 'https://mljxcloud.com/bangni_h5/',
           },
           use_stable_access_token: true,
@@ -197,8 +197,8 @@ describe('公众号插件配置校验', () => {
     const config = await service.getOfficialAccountConfig();
     expect(config.oauth).toEqual(
       expect.objectContaining({
-        scope: 'snsapi_base',
-        scopes: ['snsapi_base'],
+        scope: 'snsapi_userinfo',
+        scopes: ['snsapi_userinfo'],
         redirect: 'https://mljxcloud.com/bangni_h5/',
         redirect_url: 'https://mljxcloud.com/bangni_h5/',
       })
@@ -214,8 +214,8 @@ describe('wx 插件 SDK 调用', () => {
       app_id: 'wx1234567890abcdef',
       secret: 'abcdefghijklmnopqrstuvwxyz123456',
       oauth: {
-        scope: 'snsapi_base',
-        scopes: ['snsapi_base'],
+        scope: 'snsapi_userinfo',
+        scopes: ['snsapi_userinfo'],
         redirect: 'https://mljxcloud.com/bangni_h5/',
         redirect_url: 'https://mljxcloud.com/bangni_h5/',
       },
@@ -285,7 +285,7 @@ describe('wx 插件 SDK 调用', () => {
     const tokenFromCode = jest.fn(async () => ({
       openid: 'mp-openid',
       unionid: 'union-1',
-      scope: 'snsapi_base',
+      scope: 'snsapi_userinfo',
       access_token: 'oauth-token',
     }));
     const oauth: any = {
@@ -301,12 +301,12 @@ describe('wx 插件 SDK 调用', () => {
 
     const result = await service.mpSilentUserInfo('oauth-code');
 
-    expect(oauth.scopes).toHaveBeenCalledWith(['snsapi_base']);
+    expect(oauth.scopes).toHaveBeenCalledWith(['snsapi_userinfo']);
     expect(tokenFromCode).toHaveBeenCalledWith('oauth-code');
     expect(result).toEqual({
       openid: 'mp-openid',
       unionid: 'union-1',
-      scope: 'snsapi_base',
+      scope: 'snsapi_userinfo',
     });
   });
 
@@ -317,7 +317,7 @@ describe('wx 插件 SDK 调用', () => {
     const oauth: any = {
       tokenFromCode: jest.fn(async () => ({
         openid: 'mp-openid',
-        scope: 'snsapi_base',
+        scope: 'snsapi_userinfo',
         access_token: 'oauth-token',
       })),
       scopes: jest.fn(function () {

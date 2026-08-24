@@ -153,7 +153,7 @@ export class UserLoginService extends BaseService {
   }
 
   /**
-   * 公众号登录。H5 在微信内用 snsapi_base 静默拿到 code 后走这里，
+   * 公众号登录。H5 在微信内用 snsapi_userinfo 静默拿到 code 后走这里，
    * 通过 unionid 与小程序用户打通为同一 user_info。
    * @param code
    */
