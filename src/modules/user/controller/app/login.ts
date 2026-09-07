@@ -67,8 +67,14 @@ export class AppUserLoginController extends BaseController {
 
   @CoolTag(TagTypes.IGNORE_TOKEN)
   @Post('/phone', { summary: '手机号登录' })
-  async phone(@Body('phone') phone: string, @Body('smsCode') smsCode: string) {
-    return this.ok(await this.userLoginService.phoneVerifyCode(phone, smsCode));
+  async phone(
+    @Body('phone') phone: string,
+    @Body('smsCode') smsCode: string,
+    @Body('promotionCode') promotionCode?: string
+  ) {
+    return this.ok(
+      await this.userLoginService.phoneVerifyCode(phone, smsCode, promotionCode)
+    );
   }
 
   @CoolTag(TagTypes.IGNORE_TOKEN)
@@ -86,31 +92,43 @@ export class AppUserLoginController extends BaseController {
   @CoolTag(TagTypes.IGNORE_TOKEN)
   @Post('/miniPhone', { summary: '绑定小程序手机号' })
   async miniPhone(@Body() body) {
-    const { code, encryptedData, iv } = body;
+    const { code, encryptedData, iv, promotionCode } = body;
     return this.ok(
-      await this.userLoginService.miniPhone(code, encryptedData, iv)
+      await this.userLoginService.miniPhone(
+        code,
+        encryptedData,
+        iv,
+        promotionCode
+      )
     );
   }
 
   @Post('/bindPhone', { summary: '绑定手机号' })
   async bindPhone(
     @Body('phone') phone: string,
-    @Body('smsCode') smsCode: string
+    @Body('smsCode') smsCode: string,
+    @Body('promotionCode') promotionCode?: string
   ) {
     return this.ok(
-      await this.userLoginService.bindPhone(this.ctx.user.id, phone, smsCode)
+      await this.userLoginService.bindPhone(
+        this.ctx.user.id,
+        phone,
+        smsCode,
+        promotionCode
+      )
     );
   }
 
   @Post('/bindMiniPhone', { summary: '绑定小程序手机号' })
   async bindMiniPhone(@Body() body) {
-    const { code, encryptedData, iv } = body;
+    const { code, encryptedData, iv, promotionCode } = body;
     return this.ok(
       await this.userLoginService.bindMiniPhone(
         this.ctx.user.id,
         code,
         encryptedData,
-        iv
+        iv,
+        promotionCode
       )
     );
   }

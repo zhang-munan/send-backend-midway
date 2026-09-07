@@ -3,6 +3,7 @@ import { Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import * as moment from 'moment';
 import { Repository } from 'typeorm';
+import { AdbSmsDispatchEntity } from '../../message/entity/adb_sms_dispatch';
 import { MessageInfoEntity } from '../../message/entity/info';
 import { OrderInfoEntity } from '../../order/entity/info';
 import { UserInfoEntity } from '../../user/entity/info';
@@ -33,6 +34,9 @@ export class BaseDashboardService extends BaseService {
   @InjectEntityModel(MessageInfoEntity)
   messageInfoEntity: Repository<MessageInfoEntity>;
 
+  @InjectEntityModel(AdbSmsDispatchEntity)
+  adbSmsDispatchEntity: Repository<AdbSmsDispatchEntity>;
+
   @InjectEntityModel(OrderInfoEntity)
   orderInfoEntity: Repository<OrderInfoEntity>;
 
@@ -56,7 +60,15 @@ export class BaseDashboardService extends BaseService {
       .startOf('year')
       .format('YYYY-MM-DD HH:mm:ss');
 
-    const [users, messages, orders, hourlyRows, monthlyRows, statusRows] =
+    const [
+      users,
+      messages,
+      orders,
+      hourlyRows,
+      monthlyRows,
+      statusRows,
+      deviceRows,
+    ] =
       await Promise.all([
         this.userInfoEntity
           .createQueryBuilder('user')
@@ -136,6 +148,20 @@ export class BaseDashboardService extends BaseService {
           .groupBy('message.status')
           .orderBy('message.status', 'ASC')
           .getRawMany(),
+        this.adbSmsDispatchEntity
+          .createQueryBuilder('dispatch')
+          .innerJoin(
+            MessageInfoEntity,
+            'message',
+            'message.id = dispatch.messageId'
+          )
+          .select('dispatch.deviceSerial', 'device')
+          .addSelect('COALESCE(SUM(message.smsCount), 0)', 'count')
+          .where('message.status = :deliveredStatus', { deliveredStatus: 5 })
+          .groupBy('dispatch.deviceSerial')
+          .orderBy('count', 'DESC')
+          .addOrderBy('dispatch.deviceSerial', 'ASC')
+          .getRawMany(),
       ]);
 
     const totalUsers = this.toNumber(users?.total);
@@ -168,6 +194,10 @@ export class BaseDashboardService extends BaseService {
       messages: {
         total: this.toNumber(messages?.total),
         today: this.toNumber(messages?.today),
+        devices: deviceRows.map(row => ({
+          device: String(row.device),
+          count: this.toNumber(row.count),
+        })),
         hourly: Array.from({ length: 24 }, (_, hour) => ({
           hour,
           count: hourlyMap.get(hour) || 0,

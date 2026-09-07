@@ -11,6 +11,7 @@ import { UserSmsService } from './sms';
 import { v1 as uuid } from 'uuid';
 import * as md5 from 'md5';
 import { PluginService } from '../../plugin/service/info';
+import { PromotionService } from '../../promotion/service/promotion';
 
 /**
  * 登录
@@ -38,6 +39,9 @@ export class UserLoginService extends BaseService {
   @Inject()
   userSmsService: UserSmsService;
 
+  @Inject()
+  promotionService: PromotionService;
+
   /**
    * 发送手机验证码
    * @param phone
@@ -61,14 +65,14 @@ export class UserLoginService extends BaseService {
    * @param phone
    * @param smsCode
    */
-  async phoneVerifyCode(phone, smsCode) {
+  async phoneVerifyCode(phone, smsCode, promotionCode?: string) {
     if (!/^1[3-9]\d{9}$/.test(phone || '')) {
       throw new CoolCommException('请输入正确的手机号');
     }
     // 1、检查短信验证码  2、登录
     const check = await this.userSmsService.checkCode(phone, smsCode);
     if (check) {
-      return await this.phone(phone);
+      return await this.phone(phone, promotionCode);
     } else {
       throw new CoolCommException('验证码错误');
     }
@@ -80,7 +84,7 @@ export class UserLoginService extends BaseService {
    * @param encryptedData
    * @param iv
    */
-  async miniPhone(code, encryptedData, iv) {
+  async miniPhone(code, encryptedData, iv, promotionCode?: string) {
     const wxPhone = await this.userWxService.miniPhone(code, encryptedData, iv);
     if (wxPhone?.phone) {
       let user: any = await this.userInfoEntity.findOneBy({
@@ -110,6 +114,7 @@ export class UserLoginService extends BaseService {
         },
         0
       );
+      await this.promotionService?.bindReferral(user.id, promotionCode);
       return this.token({ id: user.id });
     } else {
       throw new CoolCommException('获得手机号失败，请检查配置');
@@ -136,7 +141,7 @@ export class UserLoginService extends BaseService {
    * @param phone
    * @returns
    */
-  async phone(phone: string) {
+  async phone(phone: string, promotionCode?: string) {
     let user: any = await this.userInfoEntity.findOneBy({
       phone: Equal(phone),
     });
@@ -149,6 +154,7 @@ export class UserLoginService extends BaseService {
       };
       user = await this.userInfoEntity.save(user);
     }
+    await this.promotionService?.bindReferral(user.id, promotionCode);
     return this.token({ id: user.id });
   }
 
@@ -271,10 +277,17 @@ export class UserLoginService extends BaseService {
    * 为当前微信用户绑定手机号。若手机号属于旧版手机号登录账号，则接管该账号，
    * 保留其订单、消息和会话等全部 userId 关联数据。
    */
-  async bindPhone(userId: number, phone: string, smsCode: string) {
+  async bindPhone(
+    userId: number,
+    phone: string,
+    smsCode: string,
+    promotionCode?: string
+  ) {
     const valid = await this.userSmsService.checkCode(phone, smsCode);
     if (!valid) throw new CoolCommException('验证码错误');
-    return this.bindPhoneToUser(userId, phone);
+    const result = await this.bindPhoneToUser(userId, phone);
+    await this.promotionService?.bindReferral(result.userId, promotionCode);
+    return result.token;
   }
 
   /** 为当前用户绑定微信授权手机号。 */
@@ -282,12 +295,15 @@ export class UserLoginService extends BaseService {
     userId: number,
     code: string,
     encryptedData: string,
-    iv: string
+    iv: string,
+    promotionCode?: string
   ) {
     const wxPhone = await this.userWxService.miniPhone(code, encryptedData, iv);
     if (!wxPhone?.phone)
       throw new CoolCommException('获得手机号失败，请检查配置');
-    return this.bindPhoneToUser(userId, wxPhone.phone);
+    const result = await this.bindPhoneToUser(userId, wxPhone.phone);
+    await this.promotionService?.bindReferral(result.userId, promotionCode);
+    return result.token;
   }
 
   private async bindPhoneToUser(userId: number, phone: string) {
@@ -301,7 +317,10 @@ export class UserLoginService extends BaseService {
     });
     if (!phoneOwner || phoneOwner.id === current.id) {
       await this.userInfoEntity.update(current.id, { phone });
-      return this.token({ id: current.id });
+      return {
+        userId: current.id,
+        token: await this.token({ id: current.id }),
+      };
     }
 
     // 兼容改版前“手机号即账号”的用户：切换回旧 userId，避免会话和订单丢失。
@@ -314,7 +333,10 @@ export class UserLoginService extends BaseService {
           loginType: 0,
         });
       });
-      return this.token({ id: phoneOwner.id });
+      return {
+        userId: phoneOwner.id,
+        token: await this.token({ id: phoneOwner.id }),
+      };
     }
 
     throw new CoolCommException('该手机号已绑定其他微信账号');

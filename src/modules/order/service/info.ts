@@ -17,6 +17,7 @@ import { MessagePricingService } from '../../message/service/pricing-config';
 import { MessageBlacklistService } from '../../message/service/blacklist';
 import { normalizeSendSchedule } from '../../message/service/schedule';
 import { appendControlRemark } from '../../base/utils/control-remark';
+import { PromotionService } from '../../promotion/service/promotion';
 
 /** 支付方式 */
 export const PAY_METHOD = {
@@ -82,6 +83,9 @@ export class OrderInfoService extends BaseService {
 
   @Inject()
   messagePricingService: MessagePricingService;
+
+  @Inject()
+  promotionService: PromotionService;
 
   /**
    * 创建订单
@@ -917,6 +921,14 @@ export class OrderInfoService extends BaseService {
     order.status = ORDER_STATUS.PAID;
     order.payTime = payTime;
     order.tradeNo = tradeNo;
+    // 推广佣金是支付后的附属账务。失败不回滚已支付订单，幂等接口可补偿重试。
+    if (this.promotionService) {
+      try {
+        await this.promotionService.recordPaidOrder(order.id);
+      } catch (error) {
+        // 定时对账任务会补偿，支付主链路不能因附属佣金账务失败而回滚。
+      }
+    }
     return true;
   }
 
@@ -1616,6 +1628,13 @@ export class OrderInfoService extends BaseService {
         refundTime: new Date(),
         refundRejectReason: null,
       });
+      if (this.promotionService) {
+        await this.promotionService.reverseCommissionForOrder(
+          order.id,
+          `订单 ${order.orderNo} 已退款，佣金冲正`,
+          manager
+        );
+      }
     });
   }
 

@@ -11,7 +11,7 @@ export class SettingDocEntity extends BaseEntity {
     type: 'varchar',
     length: 64,
     comment:
-      '文档标识：user_agreement | privacy_policy | refund_rules | usage_guide',
+      '文档标识：user_agreement | privacy_policy | refund_rules | usage_guide | ambassador_rules',
   })
   docKey: string;
 

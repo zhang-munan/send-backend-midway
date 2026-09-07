@@ -1,6 +1,7 @@
 import { CoolController, BaseController } from '@cool-midway/core';
 import { Body, Inject, Post } from '@midwayjs/core';
 import { UserInfoEntity } from '../../../user/entity/info';
+import { AdbSmsDispatchEntity } from '../../entity/adb_sms_dispatch';
 import { MessageInfoEntity } from '../../entity/info';
 import { MessageInfoService } from '../../service/info';
 
@@ -19,9 +20,19 @@ import { MessageInfoService } from '../../service/info';
       'a.senderSignature',
       'a.failReason',
     ],
-    select: ['a.*', 'b.nickName as senderNickName'],
+    select: [
+      'a.*',
+      'b.nickName as senderNickName',
+      'c.deviceSerial as sendDevice',
+    ],
     join: [
       { entity: UserInfoEntity, alias: 'b', condition: 'a.userId = b.id' },
+      {
+        entity: AdbSmsDispatchEntity,
+        alias: 'c',
+        condition: 'a.id = c.messageId',
+        type: 'leftJoin',
+      },
     ],
   },
 })

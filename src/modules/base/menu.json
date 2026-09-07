@@ -885,6 +885,119 @@
         ]
     },
     {
+        "name": "推广大使",
+        "router": null,
+        "perms": null,
+        "type": 0,
+        "icon": "icon-reward",
+        "orderNum": 6,
+        "viewPath": null,
+        "keepAlive": true,
+        "isShow": true,
+        "childMenus": [
+            {
+                "name": "大使账户",
+                "router": "/promotion/ambassador",
+                "perms": null,
+                "type": 1,
+                "icon": "icon-user",
+                "orderNum": 1,
+                "viewPath": "modules/promotion/views/ambassador.vue",
+                "keepAlive": true,
+                "isShow": true,
+                "childMenus": [
+                    {
+                        "name": "查询",
+                        "router": null,
+                        "perms": "promotion:ambassador:page,promotion:ambassador:list,promotion:ambassador:info,promotion:ambassador:setStatus",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 1,
+                        "viewPath": null,
+                        "keepAlive": false,
+                        "isShow": true,
+                        "childMenus": []
+                    }
+                ]
+            },
+            {
+                "name": "佣金明细",
+                "router": "/promotion/commission",
+                "perms": null,
+                "type": 1,
+                "icon": "icon-amount",
+                "orderNum": 2,
+                "viewPath": "modules/promotion/views/commission.vue",
+                "keepAlive": true,
+                "isShow": true,
+                "childMenus": [
+                    {
+                        "name": "查询",
+                        "router": null,
+                        "perms": "promotion:commission:page,promotion:commission:list,promotion:commission:info",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 1,
+                        "viewPath": null,
+                        "keepAlive": false,
+                        "isShow": true,
+                        "childMenus": []
+                    }
+                ]
+            },
+            {
+                "name": "提现记录",
+                "router": "/promotion/withdrawal",
+                "perms": null,
+                "type": 1,
+                "icon": "icon-card",
+                "orderNum": 3,
+                "viewPath": "modules/promotion/views/withdrawal.vue",
+                "keepAlive": true,
+                "isShow": true,
+                "childMenus": [
+                    {
+                        "name": "查询与审核",
+                        "router": null,
+                        "perms": "promotion:withdrawal:page,promotion:withdrawal:list,promotion:withdrawal:info,promotion:withdrawal:audit",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 1,
+                        "viewPath": null,
+                        "keepAlive": false,
+                        "isShow": true,
+                        "childMenus": []
+                    }
+                ]
+            },
+            {
+                "name": "规则与配置",
+                "router": "/promotion/settings",
+                "perms": null,
+                "type": 1,
+                "icon": "icon-set",
+                "orderNum": 4,
+                "viewPath": "modules/promotion/views/settings.vue",
+                "keepAlive": true,
+                "isShow": true,
+                "childMenus": [
+                    {
+                        "name": "查看与保存",
+                        "router": null,
+                        "perms": "promotion:config:get,promotion:config:save",
+                        "type": 2,
+                        "icon": null,
+                        "orderNum": 1,
+                        "viewPath": null,
+                        "keepAlive": false,
+                        "isShow": true,
+                        "childMenus": []
+                    }
+                ]
+            }
+        ]
+    },
+    {
         "name": "消息管理",
         "router": null,
         "perms": null,
