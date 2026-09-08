@@ -290,6 +290,11 @@ describe('wx 插件 SDK 调用', () => {
     }));
     const oauth: any = {
       tokenFromCode,
+      userFromToken: jest.fn(async () => ({
+        getRaw: () => ({ openid: 'mp-openid', unionid: 'union-1' }),
+        getId: () => 'mp-openid',
+        getNickname: () => 'nick',
+      })),
       scopes: jest.fn(function () {
         return this;
       }),
@@ -303,11 +308,14 @@ describe('wx 插件 SDK 调用', () => {
 
     expect(oauth.scopes).toHaveBeenCalledWith(['snsapi_userinfo']);
     expect(tokenFromCode).toHaveBeenCalledWith('oauth-code');
-    expect(result).toEqual({
-      openid: 'mp-openid',
-      unionid: 'union-1',
-      scope: 'snsapi_userinfo',
-    });
+    expect(result).toEqual(
+      expect.objectContaining({
+        openid: 'mp-openid',
+        unionid: 'union-1',
+        scope: 'snsapi_userinfo',
+        nickName: 'nick',
+      })
+    );
   });
 
   it('没有 unionid 时用 getClient 调 cgi-bin/user/info 补齐', async () => {
@@ -319,6 +327,10 @@ describe('wx 插件 SDK 调用', () => {
         openid: 'mp-openid',
         scope: 'snsapi_userinfo',
         access_token: 'oauth-token',
+      })),
+      userFromToken: jest.fn(async () => ({
+        getRaw: () => ({ openid: 'mp-openid' }),
+        getId: () => 'mp-openid',
       })),
       scopes: jest.fn(function () {
         return this;

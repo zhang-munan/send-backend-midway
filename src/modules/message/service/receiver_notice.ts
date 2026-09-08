@@ -4,6 +4,7 @@ import { Equal, In, IsNull, LessThanOrEqual, Raw, Repository } from 'typeorm';
 import { MessageReceiverNoticeEntity } from '../entity/receiver_notice';
 import { UserInfoEntity } from '../../user/entity/info';
 import { TencentSmsService } from '../../setting/service/tencent_sms';
+import { ZthySmsService } from '../../setting/service/zthy_sms';
 
 const MAX_BATCH_SIZE = 20;
 
@@ -18,6 +19,9 @@ export class MessageReceiverNoticeService {
 
   @Inject()
   tencentSmsService: TencentSmsService;
+
+  @Inject()
+  zthySmsService: ZthySmsService;
 
   @Logger()
   logger: ILogger;
@@ -65,14 +69,17 @@ export class MessageReceiverNoticeService {
     this.running = true;
     let processed = 0;
     try {
-      if (!(await this.tencentSmsService.isRecipientNoticeEnabled())) {
+      const zthyEnabled0 = await this.zthySmsService.isEnabled();
+      const tencentEnabled0 =
+        await this.tencentSmsService.isRecipientNoticeEnabled();
+      if (!zthyEnabled0 && !tencentEnabled0) {
         // 关闭期间不保留旧任务，避免以后重新开启时补发已经过时的告知短信。
         await this.noticeEntity.update(
           { status: In([0, 3]) },
           {
             status: 4,
             nextRetryAt: null,
-            lastError: '腾讯云收件人告知短信开关已关闭',
+            lastError: '智享与腾讯云收件人告知短信开关均已关闭',
           }
         );
         return 0;
@@ -91,16 +98,19 @@ export class MessageReceiverNoticeService {
       for (const notice of pending) {
         if (!(await this.claim(notice.id, notice.attempts))) continue;
         processed += 1;
-        // 开关可能在本批任务执行期间被关闭，腾讯云调用前再次复核。
-        if (!(await this.tencentSmsService.isRecipientNoticeEnabled())) {
+        // 开关可能在本批任务执行期间被关闭，调用前再次复核。
+        const zthyEnabled = await this.zthySmsService.isEnabled();
+        const tencentEnabled =
+          await this.tencentSmsService.isRecipientNoticeEnabled();
+        if (!zthyEnabled && !tencentEnabled) {
           await this.noticeEntity.update(notice.id, {
             status: 4,
-            lastError: '腾讯云收件人告知短信开关已关闭',
+            lastError: '智享与腾讯云收件人告知短信开关均已关闭',
             nextRetryAt: null,
           });
           continue;
         }
-        // 队列产生后用户可能已经登录，调用腾讯云前必须再次判断。
+        // 队列产生后用户可能已经登录，调用发送前必须再次判断。
         const registered = await this.userInfoEntity.findOne({
           where: { phone: Equal(notice.phone) },
           select: ['id'],
@@ -126,11 +136,16 @@ export class MessageReceiverNoticeService {
         }
 
         try {
-          const providerMsgId =
-            await this.tencentSmsService.sendRecipientNotice(
-              notice.phone,
-              notice.triggerCount
-            );
+          // 智享优先，腾讯云兜底
+          const providerMsgId = zthyEnabled
+            ? await this.zthySmsService.sendRecipientNotice(
+                notice.phone,
+                notice.triggerCount
+              )
+            : await this.tencentSmsService.sendRecipientNotice(
+                notice.phone,
+                notice.triggerCount
+              );
           await this.noticeEntity.update(notice.id, {
             status: 2,
             providerMsgId,

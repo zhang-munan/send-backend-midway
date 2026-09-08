@@ -2,6 +2,7 @@ import { Provide, Config, Inject, InjectClient } from '@midwayjs/core';
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { CachingFactory, MidwayCache } from '@midwayjs/cache-manager';
 import { TencentSmsService } from '../../setting/service/tencent_sms';
+import { ZthySmsService } from '../../setting/service/zthy_sms';
 import { randomInt } from 'crypto';
 
 const PHONE_REGEXP = /^1[3-9]\d{9}$/;
@@ -21,6 +22,9 @@ export class UserSmsService extends BaseService {
   @Inject()
   tencentSmsService: TencentSmsService;
 
+  @Inject()
+  zthySmsService: ZthySmsService;
+
   /**
    * 发送验证码
    * @param phone
@@ -29,11 +33,15 @@ export class UserSmsService extends BaseService {
     if (!PHONE_REGEXP.test(phone)) {
       throw new CoolCommException('请输入正确的手机号');
     }
-    // 随机四位验证码
-    const code = String(randomInt(1000, 10000));
+    // 随机六位验证码
+    const code = String(randomInt(100000, 1000000));
     try {
-      // 登录验证码固定使用腾讯云插件；签名和模板由 sms-tx 插件配置提供。
-      await this.tencentSmsService.sendLoginCode(phone, code);
+      // 智享通道开启时优先使用智享模板短信，否则回退腾讯云
+      if (await this.zthySmsService.isEnabled()) {
+        await this.zthySmsService.sendLoginCode(phone, code);
+      } else {
+        await this.tencentSmsService.sendLoginCode(phone, code);
+      }
       await this.midwayCache.set(
         `sms:${phone}`,
         code,

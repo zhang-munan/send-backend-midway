@@ -21,6 +21,10 @@ describe('收件人告知短信消费', () => {
       isRecipientNoticeEnabled: jest.fn(async () => true),
       sendRecipientNotice: jest.fn(async () => 'tx-message-id'),
     } as any;
+    service.zthySmsService = {
+      isEnabled: jest.fn(async () => false),
+      sendRecipientNotice: jest.fn(async () => 'zthy-message-id'),
+    } as any;
     service.logger = { error: jest.fn() } as any;
     return service;
   }
