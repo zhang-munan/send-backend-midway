@@ -190,7 +190,8 @@ export class ZthySmsService {
   /** 发送登录验证码。 */
   async sendLoginCode(phone: string, code: string) {
     const conf = await this.config();
-    return this.sendTemplate(conf.loginTpId, phone, { code });
+    // 模板 905342 的变量名为 valid_code（见 /sms/v2/template/query 返回的 paramJson）
+    return this.sendTemplate(conf.loginTpId, phone, { valid_code: code });
   }
 
   /** 发送收件人告知短信。 */
