@@ -197,8 +197,10 @@ export class ZthySmsService {
   /** 发送收件人告知短信。 */
   async sendRecipientNotice(phone: string, triggerCount: number) {
     const conf = await this.config();
+    // 模板 905343 的变量为 phone（接收方手机号后4位尾号，paramLength=4）。
+    // noticeVars.count 为旧模板遗留，已不再使用。
     const vars: Record<string, string> = {
-      [conf.noticeVars?.count || 'count']: String(triggerCount),
+      [conf.noticeVars?.phone || 'phone']: phone.slice(-4),
     };
     return this.sendTemplate(conf.noticeTpId, phone, vars);
   }
