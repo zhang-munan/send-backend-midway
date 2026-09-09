@@ -23,7 +23,7 @@ import { MessageInfoService } from '../../service/info';
     select: [
       'a.*',
       'b.nickName as senderNickName',
-      'c.deviceSerial as sendDevice',
+      'c.device_serial as sendDevice',
     ],
     join: [
       { entity: UserInfoEntity, alias: 'b', condition: 'a.userId = b.id' },

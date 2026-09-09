@@ -1,9 +1,10 @@
-import { Provide, Config, Inject, InjectClient } from '@midwayjs/core';
+import { Provide, Config, Inject, InjectClient, Logger } from '@midwayjs/core';
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { CachingFactory, MidwayCache } from '@midwayjs/cache-manager';
 import { TencentSmsService } from '../../setting/service/tencent_sms';
 import { ZthySmsService } from '../../setting/service/zthy_sms';
 import { randomInt } from 'crypto';
+import { ILogger } from '@midwayjs/logger';
 
 const PHONE_REGEXP = /^1[3-9]\d{9}$/;
 
@@ -24,6 +25,9 @@ export class UserSmsService extends BaseService {
 
   @Inject()
   zthySmsService: ZthySmsService;
+
+  @Logger()
+  logger: ILogger;
 
   /**
    * 发送验证码
@@ -48,7 +52,9 @@ export class UserSmsService extends BaseService {
         this.config.timeout * 1000
       );
     } catch (error) {
-      throw new CoolCommException('发送过于频繁，请稍后再试');
+      // 记录真实错误便于排查，前端统一展示友好提示
+      this.logger.error('发送短信失败 %s: %s', phone, error?.message || error);
+      throw new CoolCommException('发送失败，请稍后重试');
     }
   }
 
