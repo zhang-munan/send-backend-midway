@@ -1,7 +1,6 @@
 import { Provide, Config, Inject, InjectClient, Logger } from '@midwayjs/core';
 import { BaseService, CoolCommException } from '@cool-midway/core';
 import { CachingFactory, MidwayCache } from '@midwayjs/cache-manager';
-import { TencentSmsService } from '../../setting/service/tencent_sms';
 import { ZthySmsService } from '../../setting/service/zthy_sms';
 import { randomInt } from 'crypto';
 import { ILogger } from '@midwayjs/logger';
@@ -21,9 +20,6 @@ export class UserSmsService extends BaseService {
   midwayCache: MidwayCache;
 
   @Inject()
-  tencentSmsService: TencentSmsService;
-
-  @Inject()
   zthySmsService: ZthySmsService;
 
   @Logger()
@@ -40,12 +36,7 @@ export class UserSmsService extends BaseService {
     // 随机六位验证码
     const code = String(randomInt(100000, 1000000));
     try {
-      // 智享通道开启时优先使用智享模板短信，否则回退腾讯云
-      if (await this.zthySmsService.isEnabled()) {
-        await this.zthySmsService.sendLoginCode(phone, code);
-      } else {
-        await this.tencentSmsService.sendLoginCode(phone, code);
-      }
+      await this.zthySmsService.sendLoginCode(phone, code);
       await this.midwayCache.set(
         `sms:${phone}`,
         code,

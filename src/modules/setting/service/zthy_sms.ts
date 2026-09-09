@@ -25,8 +25,7 @@ const API_BASE = 'https://api-shss.zthysms.com';
  *   "noticeTpId": 告知短信模板ID,
  *   "noticeVars": {"count": "变量名"}  // 可选
  * }
- *
- * 开关 zthySmsEnabled：1 启用智享通道；未配置时安全回退到腾讯云。
+
  */
 @Provide()
 export class ZthySmsService {
@@ -66,17 +65,6 @@ export class ZthySmsService {
       throw new Error('智享短信参数 zthySmsConfig 未配置');
     }
     return value;
-  }
-
-  /** 智享通道总开关；与腾讯云不同，未配置时视为关闭（回退腾讯云）。 */
-  async isEnabled() {
-    const value = await this.baseSysParamService.dataByKey('zthySmsEnabled');
-    if (value === true || value === 1) return true;
-    return ['1', 'true', 'yes', 'on', 'enabled'].includes(
-      String(value ?? '')
-        .trim()
-        .toLowerCase()
-    );
   }
 
   /**
@@ -172,12 +160,21 @@ export class ZthySmsService {
     const signature = await this.resolveSignature(conf.signature);
     const record: Record<string, any> = { mobile: phone };
     if (vars) record.tpContent = vars;
+    this.logger.info(
+      `[智享诊断] 调用发送模板 tpId=${tpId} ` +
+        `phone=${phone.slice(0, 3)}****${phone.slice(-4)} ` +
+        `vars=${JSON.stringify(vars)} signature=${signature}`
+    );
     const data = await this.request('/v2/sendSmsTp', {
       signature,
       tpId: Number(tpId),
       extend,
       records: [record],
     });
+    this.logger.info(
+      `[智享诊断] 发送响应 code=${data.code} msg=${data.msg} msgId=${data.msgId} ` +
+        `invalidList=${JSON.stringify(data.invalidList ?? [])}`
+    );
     if (data.code !== 200) {
       throw new Error(`智享短信发送失败 ${data.code}: ${data.msg}`);
     }

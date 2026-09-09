@@ -134,9 +134,8 @@ export class ZthySmsReplyService {
     return true;
   }
 
-  /** 读取智享明文密码；未启用或未配置返回 null。 */
+  /** 读取智享明文密码；未配置返回 null。 */
   private async getPlainPassword(): Promise<string | null> {
-    if (!(await this.zthySmsService.isEnabled())) return null;
     const value = await this.baseSysParamService.dataByKey('zthySmsConfig');
     if (!value?.username || !value?.password) return null;
     return String(value.password);

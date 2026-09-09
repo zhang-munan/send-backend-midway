@@ -3,12 +3,11 @@ import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Equal, In, IsNull, LessThanOrEqual, Raw, Repository } from 'typeorm';
 import { MessageReceiverNoticeEntity } from '../entity/receiver_notice';
 import { UserInfoEntity } from '../../user/entity/info';
-import { TencentSmsService } from '../../setting/service/tencent_sms';
 import { ZthySmsService } from '../../setting/service/zthy_sms';
 
 const MAX_BATCH_SIZE = 20;
 
-/** 领取并发送腾讯云收件人告知短信。 */
+/** 领取并发送收件人告知短信（智享通道）。 */
 @Provide()
 export class MessageReceiverNoticeService {
   @InjectEntityModel(MessageReceiverNoticeEntity)
@@ -16,9 +15,6 @@ export class MessageReceiverNoticeService {
 
   @InjectEntityModel(UserInfoEntity)
   userInfoEntity: Repository<UserInfoEntity>;
-
-  @Inject()
-  tencentSmsService: TencentSmsService;
 
   @Inject()
   zthySmsService: ZthySmsService;
@@ -69,22 +65,6 @@ export class MessageReceiverNoticeService {
     this.running = true;
     let processed = 0;
     try {
-      const zthyEnabled0 = await this.zthySmsService.isEnabled();
-      const tencentEnabled0 =
-        await this.tencentSmsService.isRecipientNoticeEnabled();
-      if (!zthyEnabled0 && !tencentEnabled0) {
-        // 关闭期间不保留旧任务，避免以后重新开启时补发已经过时的告知短信。
-        await this.noticeEntity.update(
-          { status: In([0, 3]) },
-          {
-            status: 4,
-            nextRetryAt: null,
-            lastError: '智享与腾讯云收件人告知短信开关均已关闭',
-          }
-        );
-        return 0;
-      }
-
       const pending = await this.noticeEntity.find({
         where: [
           { status: Equal(0) },
@@ -94,28 +74,32 @@ export class MessageReceiverNoticeService {
         order: { id: 'ASC' },
         take: MAX_BATCH_SIZE,
       });
+      this.logger.info(
+        `[告知短信诊断] 本轮领取待处理任务 ${pending.length} 条（通道=智享）`
+      );
 
       for (const notice of pending) {
-        if (!(await this.claim(notice.id, notice.attempts))) continue;
-        processed += 1;
-        // 开关可能在本批任务执行期间被关闭，调用前再次复核。
-        const zthyEnabled = await this.zthySmsService.isEnabled();
-        const tencentEnabled =
-          await this.tencentSmsService.isRecipientNoticeEnabled();
-        if (!zthyEnabled && !tencentEnabled) {
-          await this.noticeEntity.update(notice.id, {
-            status: 4,
-            lastError: '智享与腾讯云收件人告知短信开关均已关闭',
-            nextRetryAt: null,
-          });
+        if (!(await this.claim(notice.id, notice.attempts))) {
+          this.logger.info(
+            `[告知短信诊断] 任务 id=${notice.id} 抢占失败（已被其他实例处理）`
+          );
           continue;
         }
+        processed += 1;
+        this.logger.info(
+          `[告知短信诊断] 开始处理任务 id=${notice.id} ` +
+            `phone=${notice.phone.slice(0, 3)}****${notice.phone.slice(-4)} ` +
+            `triggerCount=${notice.triggerCount} attempts=${notice.attempts}`
+        );
         // 队列产生后用户可能已经登录，调用发送前必须再次判断。
         const registered = await this.userInfoEntity.findOne({
           where: { phone: Equal(notice.phone) },
           select: ['id'],
         });
         if (registered) {
+          this.logger.info(
+            `[告知短信诊断] 任务 id=${notice.id} 手机号已注册用户，跳过告知短信`
+          );
           await this.noticeEntity.update(notice.id, {
             status: 4,
             lastError: '手机号已进入系统，跳过告知短信',
@@ -127,6 +111,9 @@ export class MessageReceiverNoticeService {
         // Normally the worker creates at most one task per phone per day. This
         // second check also covers retries of tasks created on an earlier day.
         if (await this.sentToday(notice.phone)) {
+          this.logger.info(
+            `[告知短信诊断] 任务 id=${notice.id} 该手机号今日已发送过告知短信，跳过`
+          );
           await this.noticeEntity.update(notice.id, {
             status: 4,
             lastError: '该手机号今日已发送过告知短信',
@@ -136,16 +123,16 @@ export class MessageReceiverNoticeService {
         }
 
         try {
-          // 智享优先，腾讯云兜底
-          const providerMsgId = zthyEnabled
-            ? await this.zthySmsService.sendRecipientNotice(
-                notice.phone,
-                notice.triggerCount
-              )
-            : await this.tencentSmsService.sendRecipientNotice(
-                notice.phone,
-                notice.triggerCount
-              );
+          this.logger.info(
+            `[告知短信诊断] 任务 id=${notice.id} 通过全部检查，准备发送（通道=智享）`
+          );
+          const providerMsgId = await this.zthySmsService.sendRecipientNotice(
+            notice.phone,
+            notice.triggerCount
+          );
+          this.logger.info(
+            `[告知短信诊断] 任务 id=${notice.id} 发送成功 providerMsgId=${providerMsgId}`
+          );
           await this.noticeEntity.update(notice.id, {
             status: 2,
             providerMsgId,
