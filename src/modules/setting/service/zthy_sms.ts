@@ -197,7 +197,7 @@ export class ZthySmsService {
     // 模板 905343 的变量为 phone（接收方手机号后4位尾号，paramLength=4）。
     // noticeVars.count 为旧模板遗留，已不再使用。
     const vars: Record<string, string> = {
-      [conf.noticeVars?.phone || 'phone']: phone.slice(-4),
+      phone: phone.slice(-4),
     };
     return this.sendTemplate(conf.noticeTpId, phone, vars);
   }
