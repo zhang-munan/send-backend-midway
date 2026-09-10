@@ -2,6 +2,7 @@ import { ILogger, Inject, Logger, Provide } from '@midwayjs/core';
 import { InjectEntityModel } from '@midwayjs/typeorm';
 import { Equal, In, IsNull, LessThanOrEqual, Raw, Repository } from 'typeorm';
 import { MessageReceiverNoticeEntity } from '../entity/receiver_notice';
+import { MessageInfoEntity } from '../entity/info';
 import { UserInfoEntity } from '../../user/entity/info';
 import { ZthySmsService } from '../../setting/service/zthy_sms';
 
@@ -12,6 +13,9 @@ const MAX_BATCH_SIZE = 20;
 export class MessageReceiverNoticeService {
   @InjectEntityModel(MessageReceiverNoticeEntity)
   noticeEntity: Repository<MessageReceiverNoticeEntity>;
+
+  @InjectEntityModel(MessageInfoEntity)
+  messageInfoEntity: Repository<MessageInfoEntity>;
 
   @InjectEntityModel(UserInfoEntity)
   userInfoEntity: Repository<UserInfoEntity>;
@@ -123,12 +127,23 @@ export class MessageReceiverNoticeService {
         }
 
         try {
+          const sourceMessage = await this.messageInfoEntity.findOne({
+            where: { id: Equal(notice.sourceMessageId) },
+            select: ['userId'],
+          });
+          if (!sourceMessage) {
+            throw new Error('告知短信关联的业务消息不存在');
+          }
+          const sender = await this.userInfoEntity.findOne({
+            where: { id: Equal(sourceMessage.userId) },
+            select: ['phone'],
+          });
           this.logger.info(
             `[告知短信诊断] 任务 id=${notice.id} 通过全部检查，准备发送（通道=智享）`
           );
           const providerMsgId = await this.zthySmsService.sendRecipientNotice(
             notice.phone,
-            notice.triggerCount
+            sender?.phone
           );
           this.logger.info(
             `[告知短信诊断] 任务 id=${notice.id} 发送成功 providerMsgId=${providerMsgId}`

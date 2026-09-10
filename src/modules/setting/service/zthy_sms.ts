@@ -192,12 +192,16 @@ export class ZthySmsService {
   }
 
   /** 发送收件人告知短信。 */
-  async sendRecipientNotice(phone: string, triggerCount: number) {
+  async sendRecipientNotice(phone: string, senderPhone: string) {
+    const normalizedSenderPhone = String(senderPhone || '').trim();
+    if (!/^\d{4,}$/.test(normalizedSenderPhone)) {
+      throw new Error('告知短信发送人手机号缺失或无效');
+    }
     const conf = await this.config();
-    // 模板 905343 的变量为 phone（接收方手机号后4位尾号，paramLength=4）。
+    // 模板 905343 的变量为 phone（发送方手机号后4位尾号，paramLength=4）。
     // noticeVars.count 为旧模板遗留，已不再使用。
     const vars: Record<string, string> = {
-      phone: phone.slice(-4),
+      phone: normalizedSenderPhone.slice(-4),
     };
     return this.sendTemplate(conf.noticeTpId, phone, vars);
   }
